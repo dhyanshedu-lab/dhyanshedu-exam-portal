@@ -1,127 +1,69 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+const SUPABASE_URL="https://vxifxiuitprdafvgpojh.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY="sb_publishable_WbeQeyK02QCDwayhi2NMjw_T-gOIpxG";
+const API_URL="https://dhyanshedu-api.dhyanshedu.workers.dev";
+const $=s=>document.querySelector(s);
+const supabase=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+let profile=null;
+$("#year").textContent=new Date().getFullYear();
 
-// Add your Supabase Project URL and publishable (anon) key below.
-// Never put a secret/service_role key in browser code or GitHub.
-const SUPABASE_URL = "https://vxifxiuitprdafvgpojh.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_WbeQeyK02QCDwayhi2NMjw_T-gOIpxG";
-
-const loginView = document.querySelector("#login-view");
-const dashboardView = document.querySelector("#dashboard-view");
-const form = document.querySelector("#login-form");
-const message = document.querySelector("#login-message");
-const loginButton = document.querySelector("#login-button");
-
-document.querySelector("#year").textContent = new Date().getFullYear();
-
-const configured = SUPABASE_URL.startsWith("https://")
-  && !SUPABASE_URL.includes("PASTE_")
-  && !SUPABASE_PUBLISHABLE_KEY.includes("PASTE_");
-
-let supabase = null;
-if (configured) {
-  supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
-  });
-} else {
-  message.textContent = "Setup needed: add your Supabase Project URL and publishable key in app.js.";
+async function api(path,opts={}) {
+  const {data:{session}}=await supabase.auth.getSession();
+  if(!session?.access_token)throw new Error("Please sign in again.");
+  const r=await fetch(API_URL+path,{...opts,headers:{"Content-Type":"application/json",Authorization:`Bearer ${session.access_token}`,...(opts.headers||{})}});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(d.error||`Request failed (${r.status})`);
+  return d;
 }
-
-document.querySelector("#toggle-password").addEventListener("click", () => {
-  const input = document.querySelector("#password");
-  const show = input.type === "password";
-  input.type = show ? "text" : "password";
-  document.querySelector("#toggle-password").textContent = show ? "Hide" : "Show";
-});
-
-function showLogin(text = "") {
-  dashboardView.classList.add("hidden");
-  loginView.classList.remove("hidden");
-  message.textContent = text;
+function login(text=""){ $("#dashboard-view").classList.add("hidden");$("#login-view").classList.remove("hidden");$("#login-message").textContent=text; }
+function page(name){
+  $("#overview-page").classList.toggle("hidden",name!=="overview");
+  $("#teachers-page").classList.toggle("hidden",name!=="teachers");
+  document.querySelectorAll(".nav-item[data-page]").forEach(x=>x.classList.toggle("active",x.dataset.page===name));
+  if(name==="teachers")loadTeachers();
 }
-
-function showDashboard(profile, email) {
-  loginView.classList.add("hidden");
-  dashboardView.classList.remove("hidden");
-  const name = profile.full_name || email || "User";
-  document.querySelector("#user-name").textContent = name;
-  document.querySelector("#user-role").textContent = profile.role;
-  document.querySelector("#avatar").textContent = name.trim().charAt(0).toUpperCase();
-  document.querySelector("#welcome-title").textContent =
-    profile.role === "admin" ? "Admin dashboard" :
-    profile.role === "teacher" ? "Teacher dashboard" : "Student dashboard";
+function dashboard(p,email){
+  profile=p;$("#login-view").classList.add("hidden");$("#dashboard-view").classList.remove("hidden");
+  const n=p.full_name||email||"User";$("#user-name").textContent=n;$("#user-role").textContent=p.role;$("#avatar").textContent=n[0].toUpperCase();
+  $("#welcome-title").textContent=p.role==="admin"?"Admin dashboard":`${p.role} dashboard`;
+  document.querySelectorAll("[data-admin-only]").forEach(x=>x.classList.toggle("hidden",p.role!=="admin"));
+  page("overview");if(p.role==="admin")loadStats();else $("#dashboard-message").textContent="Your workspace will be enabled in a later phase.";
 }
-
-async function loadProfile(session) {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, full_name, email, role, approval_status")
-    .eq("id", session.user.id)
-    .single();
-
-  if (error || !data) {
-    await supabase.auth.signOut();
-    showLogin("Your profile could not be loaded. Please contact the DhyanshEdu administrator.");
-    return;
-  }
-  if (data.approval_status !== "approved") {
-    await supabase.auth.signOut();
-    showLogin("Your account is awaiting approval. Please contact DhyanshEdu.");
-    return;
-  }
-  showDashboard(data, session.user.email);
-  loadStats(data.role);
+async function loadProfile(session){
+  try{const d=await api("/api/me");dashboard(d.profile,session.user.email);}
+  catch(e){await supabase.auth.signOut();login(e.message);}
 }
-
-async function loadStats(role) {
-  const msg = document.querySelector("#dashboard-message");
-  const tables = [
-    ["teacher-count", "profiles", "teacher"],
-    ["student-count", "profiles", "student"],
-    ["exam-count", "exams", null],
-    ["attempt-count", "exam_attempts", null]
-  ];
-  for (const [elementId, table, roleFilter] of tables) {
-    let query = supabase.from(table).select("*", { count: "exact", head: true });
-    if (roleFilter) query = query.eq("role", roleFilter);
-    const { count, error } = await query;
-    document.getElementById(elementId).textContent = error ? "—" : String(count ?? 0);
-    if (error) msg.textContent = "Some dashboard counts are unavailable until the database permissions are configured.";
-  }
-  // Non-admins should not use the admin overview. This starter keeps the same
-  // shell while the dedicated teacher and student views are built in later phases.
-  if (role !== "admin") {
-    msg.textContent = `Signed in as ${role}. Dedicated ${role} workspace will be added in the next build phase.`;
-  }
+async function loadStats(){
+  try{const {stats}=await api("/api/dashboard/stats");$("#teacher-count").textContent=stats.teachers;$("#student-count").textContent=stats.students;$("#exam-count").textContent=stats.exams;$("#attempt-count").textContent=stats.attempts;$("#dashboard-message").textContent="Connected to DhyanshEdu backend.";}
+  catch(e){$("#dashboard-message").textContent=e.message;}
 }
-
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!supabase) return;
-  message.textContent = "";
-  loginButton.disabled = true;
-  loginButton.textContent = "Signing in…";
-  const email = document.querySelector("#email").value.trim();
-  const password = document.querySelector("#password").value;
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  loginButton.disabled = false;
-  loginButton.innerHTML = 'Sign in <span>→</span>';
-  if (error) {
-    message.textContent = error.message;
-    return;
-  }
-  await loadProfile(data.session);
-});
-
-document.querySelector("#signout-button").addEventListener("click", async () => {
-  if (supabase) await supabase.auth.signOut();
-  showLogin("You have signed out.");
-});
-
-if (supabase) {
-  supabase.auth.getSession().then(({ data }) => {
-    if (data.session) loadProfile(data.session);
-  });
-  supabase.auth.onAuthStateChange((event, session) => {
-    if (event === "SIGNED_OUT" || !session) showLogin();
-  });
+async function loadTeachers(){
+  const body=$("#teacher-list");body.innerHTML='<tr><td colspan="4">Loading…</td></tr>';
+  try{
+    const {teachers}=await api("/api/teachers");$("#teacher-total").textContent=teachers.length;
+    $("#teacher-pending").textContent=teachers.filter(t=>t.status==="pending").length;
+    $("#teacher-approved").textContent=teachers.filter(t=>t.status==="approved").length;
+    body.replaceChildren();
+    if(!teachers.length){body.innerHTML='<tr><td colspan="4" class="empty-state">No teachers yet. Select Add teacher to invite one.</td></tr>';return;}
+    for(const t of teachers){
+      const tr=document.createElement("tr");
+      for(const value of [t.full_name,t.email]){
+        const td=document.createElement("td");td.textContent=value||"";tr.append(td);
+      }
+      const st=document.createElement("td"), badge=document.createElement("span");badge.className=`status-pill ${t.status}`;badge.textContent=t.status;st.append(badge);tr.append(st);
+      const action=document.createElement("td"),select=document.createElement("select");select.className="status-select";
+      ["pending","approved","inactive"].forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v[0].toUpperCase()+v.slice(1);o.selected=v===t.status;select.append(o)});
+      select.addEventListener("change",async()=>{select.disabled=true;try{await api(`/api/teachers/${encodeURIComponent(t.id)}/status`,{method:"PATCH",body:JSON.stringify({status:select.value})});await loadTeachers();}catch(e){alert(e.message);select.disabled=false;}});
+      action.append(select);tr.append(action);body.append(tr);
+    }
+  }catch(e){body.innerHTML="";const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=4;td.textContent=e.message;tr.append(td);body.append(tr);}
 }
+$("#toggle-password").addEventListener("click",()=>{const i=$("#password"),show=i.type==="password";i.type=show?"text":"password";$("#toggle-password").textContent=show?"Hide":"Show";});
+$("#login-form").addEventListener("submit",async e=>{e.preventDefault();const b=$("#login-button");b.disabled=true;b.textContent="Signing in…";const {data,error}=await supabase.auth.signInWithPassword({email:$("#email").value.trim(),password:$("#password").value});b.disabled=false;b.innerHTML='Sign in <span>→</span>';if(error){$("#login-message").textContent=error.message;return;}await loadProfile(data.session);});
+$("#signout-button").addEventListener("click",async()=>{await supabase.auth.signOut();profile=null;login("You have signed out.");});
+document.querySelectorAll(".nav-item[data-page]").forEach(a=>a.addEventListener("click",e=>{e.preventDefault();if(profile?.role==="admin")page(a.dataset.page);}));
+$("#add-teacher-button").addEventListener("click",()=>{$("#teacher-form").reset();$("#teacher-form-message").textContent="";$("#teacher-dialog").showModal();});
+$("#close-teacher-dialog").addEventListener("click",()=>$("#teacher-dialog").close());
+$("#teacher-form").addEventListener("submit",async e=>{e.preventDefault();const b=$("#save-teacher-button");b.disabled=true;b.textContent="Sending…";$("#teacher-form-message").textContent="";try{await api("/api/teachers",{method:"POST",body:JSON.stringify({full_name:$("#teacher-full-name").value.trim(),email:$("#teacher-email").value.trim()})});$("#teacher-form-message").textContent="Invitation sent. Access is pending Admin approval.";await loadTeachers();setTimeout(()=>$("#teacher-dialog").close(),1200);}catch(err){$("#teacher-form-message").textContent=err.message;}finally{b.disabled=false;b.textContent="Send invitation";}});
+supabase.auth.getSession().then(({data})=>{if(data.session)loadProfile(data.session);});
+supabase.auth.onAuthStateChange((event,session)=>{if(event==="SIGNED_OUT"||!session)login();});
