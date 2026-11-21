@@ -191,7 +191,7 @@ export default {
        try {
          await env.DB.batch([
            env.DB.prepare("INSERT INTO enquiries(id,student_name,parent_name,phone,email,student_class,board,status) VALUES(?,?,?,?,?,?,?,'new')").bind(id,studentName,parentName,phone,email,studentClass,board),
-           env.DB.prepare("INSERT INTO enquiry_history(id,enquiry_id,actor_user_id,action,field_name,old_value,new_value) VALUES(?,?,NULL,'created','status',NULL,'new')").bind(crypto.randomUUID(),id)
+           env.DB.prepare("INSERT INTO enquiry_history(id,enquiry_id,actor_id,actor_user_id,action,field_name,old_value,new_value) VALUES(?,?,NULL,NULL,'created','status',NULL,'new')").bind(crypto.randomUUID(),id)
          ]);
        } catch (e) {
          return reply({error:"We could not save your enquiry right now. Please try again."},503,request);
@@ -263,7 +263,7 @@ export default {
        const changes = [["status",current.status,status],["assigned_to",current.assigned_to,assignedTo],["follow_up_at",current.follow_up_at,followUp],["admin_notes",current.admin_notes,notes]];
        const statements = [env.DB.prepare("UPDATE enquiries SET status=?,assigned_to=?,follow_up_at=?,admin_notes=?,updated_at=datetime('now') WHERE id=?").bind(status,assignedTo,followUp,notes,id)];
        for (const [field,oldValue,newValue] of changes) {
-         if ((oldValue ?? null) !== (newValue ?? null)) statements.push(env.DB.prepare("INSERT INTO enquiry_history(id,enquiry_id,actor_user_id,action,field_name,old_value,new_value) VALUES(?,?,?,'updated',?,?,?)").bind(crypto.randomUUID(),id,user.id,field,oldValue ?? null,newValue ?? null));
+         if ((oldValue ?? null) !== (newValue ?? null)) statements.push(env.DB.prepare("INSERT INTO enquiry_history(id,enquiry_id,actor_id,actor_user_id,action,field_name,old_value,new_value) VALUES(?,?,?,?,'updated',?,?,?)").bind(crypto.randomUUID(),id,user.id,user.id,field,oldValue ?? null,newValue ?? null));
        }
        await env.DB.batch(statements);
        return reply({success:true},200,request);
