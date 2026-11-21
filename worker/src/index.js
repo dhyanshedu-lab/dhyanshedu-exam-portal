@@ -264,7 +264,7 @@ export default {
        const resultMatch=path.match(/^\/api\/student\/results\/([0-9a-f-]+)$/i);
        if(resultMatch && method==="GET"){
          const result=await env.DB.prepare(
-           "SELECT r.id result_id,r.attempt_id,r.exam_id,r.total_marks,r.marks_obtained,r.percentage,r.published_at,e.title exam_title,e.pass_marks,ea.submitted_at FROM results r JOIN exams e ON e.id=r.exam_id JOIN exam_attempts ea ON ea.id=r.attempt_id JOIN batches b ON b.id=e.batch_id JOIN batch_students bs ON bs.batch_id=b.id AND bs.student_id=r.student_id AND bs.status='active' WHERE r.attempt_id=? AND r.student_id=? AND r.published_at IS NOT NULL"
+           "SELECT r.id result_id,r.attempt_id,r.exam_id,r.total_marks,r.marks_obtained,r.percentage,r.published_at,e.title exam_title,e.pass_marks,ea.submitted_at FROM results r JOIN exams e ON e.id=r.exam_id JOIN exam_attempts ea ON ea.id=r.attempt_id JOIN batches b ON b.id=e.batch_id JOIN batch_students bs ON bs.batch_id=b.id AND bs.student_id=r.student_id WHERE r.attempt_id=? AND r.student_id=? AND r.published_at IS NOT NULL"
          ).bind(resultMatch[1],user.id).first();
          if(!result) return reply({error:"Published result not found."},404,request);
          const rows=await env.DB.prepare(
