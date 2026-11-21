@@ -737,7 +737,7 @@ async function loadAdminPage(name) {
   } catch(error) { $("#dashboard-message").textContent=error.message; }
 }
 
-$("#teacher-question-form")?.addEventListener("submit",async e=>{
+document.addEventListener("submit",async e=>{\n  if(e.target.id!=="teacher-question-form") return;
   e.preventDefault();
   const button=$("#save-question-button"), message=$("#question-form-message");
   const batch=teacherWorkspaceBatches.find(x=>x.id===$("#question-batch").value);
@@ -761,7 +761,7 @@ $("#teacher-question-form")?.addEventListener("submit",async e=>{
   finally{button.disabled=false;}
 });
 
-$("#teacher-exam-form")?.addEventListener("submit",async e=>{
+document.addEventListener("submit",async e=>{\n  if(e.target.id!=="teacher-exam-form") return;
   e.preventDefault();
   const button=$("#save-exam-button"),message=$("#exam-form-message");
   const questionIds=Array.from($("#exam-questions").selectedOptions).map(x=>x.value);
