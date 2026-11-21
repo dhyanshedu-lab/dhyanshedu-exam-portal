@@ -183,10 +183,10 @@ export default {
        const student = text(b.student_name,120), parent = text(b.parent_name,120);
        const phone = text(b.phone,30), email = text(b.email,254).toLowerCase();
        const studentClass = text(b.student_class,30), board = text(b.board,80);
-       if (!student || !phone || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || !studentClass) {
+       if (!student || !phone || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !studentClass) {
          return reply({error:"Please provide student name, phone, valid email and class."},400,request);
        }
-       const digits = phone.replace(/\\D/g,"").length;
+       const digits = phone.replace(/\D/g,"").length;
        if (digits < 7 || digits > 15) return reply({error:"Enter a valid phone number."},400,request);
        const id = crypto.randomUUID();
        await env.DB.prepare("INSERT INTO enquiries(id,student_name,parent_name,phone,email,student_class,board) VALUES(?,?,?,?,?,?,?)")
@@ -232,7 +232,7 @@ export default {
        return reply({success:true,enquiries:q.results||[]},200,request);
      }
 
-     let enquiryMatch = path.match(/^\\/api\\/enquiries\\/([0-9a-f-]+)$/i);
+     let enquiryMatch = path.match(/^\/api\/enquiries\/([0-9a-f-]+)$/i);
      if (enquiryMatch && method === "PATCH" && account.role === "admin") {
        const id = enquiryMatch[1], b = await body(request);
        const old = await env.DB.prepare("SELECT id,status,assigned_to,follow_up_at,admin_notes FROM enquiries WHERE id=?").bind(id).first();
@@ -244,7 +244,7 @@ export default {
          return reply({error:"Invalid follow-up owner"},400,request);
        }
        const follow = b.follow_up_at === undefined ? old.follow_up_at : (text(b.follow_up_at,40)||null);
-       if (follow && !/^\\d{4}-\\d{2}-\\d{2}$/.test(follow)) return reply({error:"Invalid follow-up date"},400,request);
+       if (follow && !/^\d{4}-\d{2}-\d{2}$/.test(follow)) return reply({error:"Invalid follow-up date"},400,request);
        const notes = b.admin_notes === undefined ? old.admin_notes : text(b.admin_notes,2000);
        const changes = [["status",old.status,status],["assigned_to",old.assigned_to,assigned],["follow_up_at",old.follow_up_at,follow],["admin_notes",old.admin_notes,notes]];
        const statements = [env.DB.prepare("UPDATE enquiries SET status=?,assigned_to=?,follow_up_at=?,admin_notes=?,updated_at=datetime('now') WHERE id=?").bind(status,assigned,follow,notes,id)];
@@ -254,7 +254,7 @@ export default {
        await env.DB.batch(statements);
        return reply({success:true},200,request);
      }
-     enquiryMatch = path.match(/^\\/api\\/enquiries\\/([0-9a-f-]+)\\/history$/i);
+     enquiryMatch = path.match(/^\/api\/enquiries\/([0-9a-f-]+)\/history$/i);
      if (enquiryMatch && method === "GET" && account.role === "admin") {
        const q = await env.DB.prepare("SELECT h.*,u.full_name actor_name FROM enquiry_history h LEFT JOIN users u ON u.id=h.actor_id WHERE h.enquiry_id=? ORDER BY h.created_at DESC").bind(enquiryMatch[1]).all();
        return reply({success:true,history:q.results||[]},200,request);
