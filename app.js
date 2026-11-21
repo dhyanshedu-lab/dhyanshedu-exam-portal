@@ -90,6 +90,125 @@ function page(name) {
   if (name !== "overview") loadAdminPage(name);
 }
 
+function roleWorkspaceSection() {
+  let section = $("#role-workspace-page");
+  if (section) section.remove();
+
+  section = document.createElement("section");
+  section.id = "role-workspace-page";
+  section.innerHTML = `
+    <div class="section-heading page-title">
+      <div><h2 id="role-workspace-heading">My workspace</h2>
+      <p class="muted" id="role-workspace-subtitle">Your assigned learning activity.</p></div>
+    </div>
+    <div class="stats-grid">
+      <article class="stat-card"><p>My batches</p><strong id="my-batch-count">—</strong></article>
+      <article class="stat-card"><p>Assignments</p><strong id="my-assignment-count">—</strong></article>
+      <article class="stat-card"><p>Study materials</p><strong id="my-material-count">—</strong></article>
+      <article class="stat-card"><p>Upcoming classes</p><strong id="my-live-count">—</strong></article>
+    </div>
+    <div class="table-card"><div class="table-heading"><h3>My batches</h3></div>
+      <div class="table-scroll"><table><thead><tr><th>Batch</th><th>Class</th><th>Subject</th><th>Type</th><th>Status</th></tr></thead><tbody id="my-batches-list"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
+    </div>
+    <div class="table-card"><div class="table-heading"><h3>Assignments</h3></div>
+      <div class="table-scroll"><table><thead><tr><th>Assignment</th><th>Batch / Class</th><th>Due</th><th>Status</th><th>Marks / Feedback</th></tr></thead><tbody id="my-assignments-list"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
+    </div>
+    <div class="table-card"><div class="table-heading"><h3>Study materials</h3></div>
+      <div class="table-scroll"><table><thead><tr><th>Title</th><th>File</th><th>Description</th><th>Added</th></tr></thead><tbody id="my-materials-list"><tr><td colspan="4">Loading…</td></tr></tbody></table></div>
+    </div>
+    <div class="table-card"><div class="table-heading"><h3>Classes and meeting links</h3></div>
+      <div class="table-scroll"><table><thead><tr><th>Class</th><th>Batch</th><th>Schedule</th><th>Status</th><th>Meeting</th></tr></thead><tbody id="my-live-list"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
+    </div>`;
+  $("#dashboard-view .content").append(section);
+  return section;
+}
+
+function addWorkspaceRow(body, values, emptyMessage, colspan) {
+  body.replaceChildren();
+  if (!values.length) {
+    const row = body.insertRow();
+    const cell = row.insertCell();
+    cell.colSpan = colspan;
+    cell.textContent = emptyMessage;
+    return;
+  }
+  values.forEach(valuesForRow => {
+    const row = body.insertRow();
+    valuesForRow.forEach(value => {
+      const cell = row.insertCell();
+      if (value instanceof Node) cell.append(value);
+      else cell.textContent = value == null || value === "" ? "—" : String(value);
+    });
+  });
+}
+
+function safeMeetingLink(raw) {
+  if (!raw) return "—";
+  try {
+    const url = new URL(raw);
+    if (!["https:", "http:"].includes(url.protocol)) return "—";
+    const link = document.createElement("a");
+    link.href = url.href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Join class";
+    return link;
+  } catch {
+    return "—";
+  }
+}
+
+async function loadRoleWorkspace(role) {
+  const section = roleWorkspaceSection();
+  $("#role-workspace-heading").textContent = role === "teacher" ? "Teacher workspace" : "Student workspace";
+  $("#role-workspace-subtitle").textContent = role === "teacher"
+    ? "Your assigned batches, teaching work and scheduled classes."
+    : "Your enrolled batches, assignments, learning materials and classes.";
+
+  try {
+    const [workspace, batches, assignments, materials, live] = await Promise.all([
+      api("/api/workspace"),
+      api("/api/my/batches"),
+      api("/api/my/assignments"),
+      api("/api/my/materials"),
+      api("/api/my/live-classes")
+    ]);
+
+    $("#my-batch-count").textContent = workspace.stats?.batches ?? 0;
+    $("#my-assignment-count").textContent = workspace.stats?.assignments ?? 0;
+    $("#my-material-count").textContent = workspace.stats?.materials ?? 0;
+    $("#my-live-count").textContent = workspace.stats?.upcoming_classes ?? 0;
+
+    addWorkspaceRow($("#my-batches-list"), (batches.batches || []).map(item => [
+      item.batch_name, item.class_name, item.subject_name,
+      item.batch_type === "one_to_one" ? "One-to-one" : "Group", item.status
+    ]), "No batches assigned yet.", 5);
+
+    addWorkspaceRow($("#my-assignments-list"), (assignments.assignments || []).map(item => [
+      item.title, item.batch_name || item.class_name,
+      item.due_at ? new Date(item.due_at).toLocaleString() : "—",
+      item.submission_status || item.status,
+      item.marks_awarded == null ? (item.teacher_feedback || "—") : String(item.marks_awarded)
+    ]), "No assignments available.", 5);
+
+    addWorkspaceRow($("#my-materials-list"), (materials.materials || []).map(item => [
+      item.title, item.file_name, item.description,
+      item.created_at ? new Date(item.created_at).toLocaleDateString() : "—"
+    ]), "No study materials available.", 4);
+
+    addWorkspaceRow($("#my-live-list"), (live.live_classes || []).map(item => [
+      item.title, item.batch_id || item.class_id,
+      item.starts_at ? new Date(item.starts_at).toLocaleString() : "—",
+      item.status, safeMeetingLink(item.meeting_url)
+    ]), "No scheduled classes available.", 5);
+  } catch (error) {
+    const message = document.createElement("p");
+    message.className = "message";
+    message.textContent = error.message || "Unable to load your workspace.";
+    section.prepend(message);
+  }
+}
+
 function dashboard(p, email) {
   profile = p;
 
@@ -109,13 +228,18 @@ function dashboard(p, email) {
     x.classList.toggle("hidden", p.role !== "admin")
   );
 
-  page("overview");
-
   if (p.role === "admin") {
+    const existing = $("#role-workspace-page");
+    if (existing) existing.remove();
+    page("overview");
     loadStats();
+  } else if (p.role === "teacher" || p.role === "student") {
+    ["overview-page","teachers-page","classes-page","subjects-page","batches-page","assignments-page","students-page"]
+      .forEach(id => { const el = $("#"+id); if (el) el.classList.add("hidden"); });
+    document.querySelectorAll(".nav-item[data-page]").forEach(x => x.classList.remove("active"));
+    loadRoleWorkspace(p.role);
   } else {
-    $("#dashboard-message").textContent =
-      "Your teacher workspace will be enabled in a later phase.";
+    showLogin("This account role is not enabled for portal access.");
   }
 }
 
