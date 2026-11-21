@@ -518,7 +518,7 @@ export default {
          if(!attempt) return reply({error:"Evaluation not found or you are not assigned to this exam."},404,request);
          if(!["submitted","evaluated"].includes(attempt.status)) return reply({error:"Only submitted attempts can be evaluated."},409,request);
          const grades=Array.isArray(b.grades)?b.grades:[];
-         if(!grades.length || grades.length>200) return reply({error:"No valid question grades were supplied."},400,request);
+         if(grades.length>200) return reply({error:"Too many question grades were supplied."},400,request);
          const validRows=await env.DB.prepare(
            "SELECT eq.id,q.question_type,eq.marks FROM exam_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.exam_id=?"
          ).bind(attempt.exam_id).all();
