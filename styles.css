@@ -96,3 +96,13 @@ textarea{resize:vertical;min-height:76px;line-height:1.5}
 #exam-monitoring-list td small{font-weight:400}
 #exam-monitoring-list .status-pill{white-space:nowrap}
 @media(max-width:680px){#exam-monitoring-page .stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* Online classes and attendance */
+#live-classes-page .form-card{margin-top:18px}
+#admin-live-class-list td:first-child{font-weight:700;min-width:170px}
+#admin-live-class-list td{white-space:normal}
+#teacher-attendance-panel{margin-top:18px}
+#teacher-attendance-roster select{min-width:130px}
+#admin-live-attendance td{white-space:normal}
+@media(max-width:680px){#live-classes-page .form-grid{grid-template-columns:1fr}}
