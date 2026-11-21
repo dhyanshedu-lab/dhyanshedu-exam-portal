@@ -1,0 +1,30 @@
+name: Validate portal JavaScript
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app.js"
+      - "worker/src/**"
+      - ".github/workflows/validate.yml"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check portal frontend syntax
+        run: node --check app.js
+      - name: Check Cloudflare Worker syntax
+        run: node --check worker/src/index.js
