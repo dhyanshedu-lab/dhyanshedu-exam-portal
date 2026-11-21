@@ -16,12 +16,15 @@ async function accountTotals(env,accountId){
 export async function handleFeeRequest(request,env,user,account,path,method){
   const admin=account.role==="admin",student=account.role==="student";
   if(path==="/api/admin/fees/bootstrap"&&method==="GET"&&admin){
-    const [students,batches,plans]=await Promise.all([
+    const [students,batches,plans,classes,subjects,curricula]=await Promise.all([
       env.DB.prepare("SELECT id,full_name,email FROM users WHERE role='student' AND status='approved' AND deleted_at IS NULL ORDER BY full_name").all(),
       env.DB.prepare("SELECT b.id,b.batch_name,b.batch_type,b.class_id,b.subject_id,c.class_name,s.subject_name FROM batches b LEFT JOIN classes c ON c.id=b.class_id LEFT JOIN subjects s ON s.id=b.subject_id WHERE b.status='active' ORDER BY b.batch_name").all(),
-      env.DB.prepare("SELECT id,name,amount_paise,billing_frequency,public_status FROM fee_plans WHERE is_active=1 ORDER BY name").all()
+      env.DB.prepare("SELECT id,name,amount_paise,billing_frequency,public_status FROM fee_plans WHERE is_active=1 ORDER BY name").all(),
+      env.DB.prepare("SELECT id,class_name FROM classes WHERE status='active' ORDER BY class_name").all(),
+      env.DB.prepare("SELECT id,subject_name FROM subjects WHERE status='active' ORDER BY subject_name").all(),
+      env.DB.prepare("SELECT id,name FROM curricula WHERE status='active' ORDER BY name").all()
     ]);
-    return json({success:true,students:students.results||[],batches:batches.results||[],fee_plans:plans.results||[]},200,request);
+    return json({success:true,students:students.results||[],batches:batches.results||[],fee_plans:plans.results||[],classes:classes.results||[],subjects:subjects.results||[],curricula:curricula.results||[]},200,request);
   }
   if(path==="/api/admin/fee-plans"&&method==="GET"&&admin){
     const rows=await env.DB.prepare("SELECT fp.*,c.class_name,s.subject_name,b.batch_name FROM fee_plans fp LEFT JOIN classes c ON c.id=fp.class_id LEFT JOIN subjects s ON s.id=fp.subject_id LEFT JOIN batches b ON b.id=fp.batch_id ORDER BY fp.created_at DESC").all();
