@@ -1,0 +1,142 @@
+[
+  {
+    "name": "academic_years",
+    "sql": "CREATE TABLE academic_years (   id TEXT PRIMARY KEY,   name TEXT NOT NULL UNIQUE,   start_date TEXT,   end_date TEXT,   is_active INTEGER NOT NULL DEFAULT 0 CHECK (is_active IN (0,1)),   created_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "assignment_attachments",
+    "sql": "CREATE TABLE assignment_attachments (   id TEXT PRIMARY KEY,   assignment_id TEXT NOT NULL REFERENCES assignments(id),   r2_object_key TEXT NOT NULL,   file_name TEXT NOT NULL,   mime_type TEXT,   file_size_bytes INTEGER,   created_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "assignment_submissions",
+    "sql": "CREATE TABLE assignment_submissions (   id TEXT PRIMARY KEY,   assignment_id TEXT NOT NULL REFERENCES assignments(id),   student_id TEXT NOT NULL REFERENCES users(id),   answer_text TEXT,   submitted_at TEXT,   marks_awarded REAL,   teacher_feedback TEXT,   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','submitted','evaluated','late')),   UNIQUE(assignment_id, student_id) )"
+  },
+  {
+    "name": "assignments",
+    "sql": "CREATE TABLE assignments (   id TEXT PRIMARY KEY,   title TEXT NOT NULL,   instructions TEXT,   class_id TEXT REFERENCES classes(id),   subject_id TEXT REFERENCES subjects(id),   batch_id TEXT REFERENCES batches(id),   teacher_id TEXT NOT NULL REFERENCES users(id),   due_at TEXT,   max_marks REAL,   status TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('draft','published','closed')),   created_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "audit_logs",
+    "sql": "CREATE TABLE audit_logs (   id TEXT PRIMARY KEY,   actor_id TEXT REFERENCES users(id),   action TEXT NOT NULL,   entity_type TEXT NOT NULL,   entity_id TEXT,   details TEXT,   created_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "batch_students",
+    "sql": "CREATE TABLE batch_students (   id TEXT PRIMARY KEY,   batch_id TEXT NOT NULL REFERENCES batches(id),   student_id TEXT NOT NULL REFERENCES users(id),   enrolled_at TEXT NOT NULL DEFAULT (datetime('now')),   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive','completed')),   UNIQUE(batch_id, student_id) )"
+  },
+  {
+    "name": "batch_teachers",
+    "sql": "CREATE TABLE batch_teachers (   id TEXT PRIMARY KEY,   batch_id TEXT NOT NULL REFERENCES batches(id),   teacher_id TEXT NOT NULL REFERENCES users(id),   assigned_at TEXT NOT NULL DEFAULT (datetime('now')),   UNIQUE(batch_id, teacher_id) )"
+  },
+  {
+    "name": "batches",
+    "sql": "CREATE TABLE batches (   id TEXT PRIMARY KEY,   batch_name TEXT NOT NULL,   class_id TEXT REFERENCES classes(id),   subject_id TEXT REFERENCES subjects(id),   academic_year_id TEXT REFERENCES academic_years(id),   batch_type TEXT NOT NULL CHECK (batch_type IN ('group','one_to_one')),   capacity INTEGER,   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive','completed')),   start_date TEXT,   end_date TEXT,   created_by TEXT REFERENCES users(id),   created_at TEXT NOT NULL DEFAULT (datetime('now')),   updated_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "classes",
+    "sql": "CREATE TABLE classes (     id INTEGER PRIMARY KEY AUTOINCREMENT,     class_name TEXT NOT NULL,     section TEXT,     academic_year TEXT NOT NULL,     status TEXT NOT NULL DEFAULT 'active',     created_at TEXT DEFAULT CURRENT_TIMESTAMP , curriculum_id TEXT REFERENCES curricula(id))"
+  },
+  {
+    "name": "curricula",
+    "sql": "CREATE TABLE curricula (   id TEXT PRIMARY KEY,   name TEXT NOT NULL UNIQUE,   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive')),   sort_order INTEGER NOT NULL DEFAULT 100,   created_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "curriculam",
+    "sql": "CREATE TABLE curriculam (   id TEXT PRIMARY KEY,   name TEXT NOT NULL UNIQUE,   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive')),   sort_order INTEGER NOT NULL DEFAULT 100,   created_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "enquiries",
+    "sql": "CREATE TABLE enquiries (id TEXT PRIMARY KEY, student_name TEXT NOT NULL, parent_name TEXT, phone TEXT NOT NULL, email TEXT NOT NULL, student_class TEXT NOT NULL, board TEXT, source TEXT NOT NULL DEFAULT 'public_website', status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','contacted','demo_scheduled','enrolled','closed')), assigned_to TEXT REFERENCES users(id), follow_up_at TEXT, admin_notes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')))"
+  },
+  {
+    "name": "enquiry_history",
+    "sql": "CREATE TABLE enquiry_history (id TEXT PRIMARY KEY, enquiry_id TEXT NOT NULL REFERENCES enquiries(id), actor_id TEXT REFERENCES users(id), action TEXT NOT NULL, old_value TEXT, new_value TEXT, notes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+  },
+  {
+    "name": "exam_attempts",
+    "sql": "CREATE TABLE exam_attempts (   id TEXT PRIMARY KEY,   exam_id TEXT NOT NULL REFERENCES exams(id),   student_id TEXT NOT NULL REFERENCES users(id),   started_at TEXT NOT NULL DEFAULT (datetime('now')),   submitted_at TEXT,   score REAL,   status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN ('in_progress','submitted','evaluated','expired')),   UNIQUE(exam_id, student_id) )"
+  },
+  {
+    "name": "exam_pathways",
+    "sql": "CREATE TABLE exam_pathways (   id TEXT PRIMARY KEY,   name TEXT NOT NULL UNIQUE,   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive')),   sort_order INTEGER NOT NULL DEFAULT 100,   created_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "exam_questions",
+    "sql": "CREATE TABLE exam_questions (   id TEXT PRIMARY KEY,   exam_id TEXT NOT NULL REFERENCES exams(id),   question_id TEXT NOT NULL REFERENCES questions(id),   marks REAL NOT NULL DEFAULT 1,   negative_marks REAL NOT NULL DEFAULT 0,   sort_order INTEGER NOT NULL DEFAULT 0,   UNIQUE(exam_id, question_id) )"
+  },
+  {
+    "name": "exams",
+    "sql": "CREATE TABLE exams (   id TEXT PRIMARY KEY,   title TEXT NOT NULL,   description TEXT,   class_id TEXT REFERENCES classes(id),   subject_id TEXT REFERENCES subjects(id),   batch_id TEXT REFERENCES batches(id),   created_by TEXT NOT NULL REFERENCES users(id),   duration_minutes INTEGER NOT NULL,   total_marks REAL NOT NULL DEFAULT 0,   pass_marks REAL,   starts_at TEXT,   ends_at TEXT,   shuffle_questions INTEGER NOT NULL DEFAULT 0 CHECK (shuffle_questions IN (0,1)),   show_results_immediately INTEGER NOT NULL DEFAULT 0 CHECK (show_results_immediately IN (0,1)),   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','scheduled','published','closed','archived')),   created_at TEXT NOT NULL DEFAULT (datetime('now')),   updated_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "fee_plans",
+    "sql": "CREATE TABLE fee_plans (   id TEXT PRIMARY KEY,   plan_name TEXT NOT NULL,   description TEXT,   amount_paise INTEGER NOT NULL,   billing_period TEXT,   status TEXT NOT NULL DEFAULT 'active',   created_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "fee_receipts",
+    "sql": "CREATE TABLE fee_receipts (   id TEXT PRIMARY KEY,   fee_transaction_id TEXT NOT NULL REFERENCES fee_transactions(id),   receipt_number TEXT NOT NULL UNIQUE,   receipt_file_key TEXT,   created_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "fee_transactions",
+    "sql": "CREATE TABLE fee_transactions (   id TEXT PRIMARY KEY,   fee_account_id TEXT NOT NULL REFERENCES student_fee_accounts(id),   amount_paise INTEGER NOT NULL,   payment_method TEXT,   transaction_reference TEXT,   payment_status TEXT NOT NULL DEFAULT 'pending',   created_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "file_assets",
+    "sql": "CREATE TABLE file_assets (   id TEXT PRIMARY KEY,   owner_id TEXT REFERENCES users(id),   file_name TEXT NOT NULL,   file_key TEXT NOT NULL,   content_type TEXT,   file_size INTEGER,   created_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "live_class_attendance",
+    "sql": "CREATE TABLE live_class_attendance (   id TEXT PRIMARY KEY,   live_class_id TEXT NOT NULL REFERENCES live_classes(id),   student_id TEXT NOT NULL REFERENCES users(id),   joined_at TEXT,   left_at TEXT,   attendance_status TEXT NOT NULL DEFAULT 'present' CHECK (attendance_status IN ('present','late','absent','excused')),   marked_by TEXT REFERENCES users(id),   UNIQUE(live_class_id, student_id) )"
+  },
+  {
+    "name": "live_classes",
+    "sql": "CREATE TABLE live_classes (   id TEXT PRIMARY KEY,   title TEXT NOT NULL,   description TEXT,   batch_id TEXT REFERENCES batches(id),   teacher_id TEXT NOT NULL REFERENCES users(id),   class_id TEXT REFERENCES classes(id),   subject_id TEXT REFERENCES subjects(id),   meeting_provider TEXT NOT NULL DEFAULT 'jitsi' CHECK (meeting_provider IN ('google_meet','jitsi','other')),   meeting_url TEXT NOT NULL,   starts_at TEXT NOT NULL,   ends_at TEXT NOT NULL,   status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled','live','completed','cancelled')),   created_at TEXT NOT NULL DEFAULT (datetime('now')),   updated_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "notifications",
+    "sql": "CREATE TABLE notifications (   id TEXT PRIMARY KEY,   user_id TEXT NOT NULL REFERENCES users(id),   title TEXT NOT NULL,   message TEXT NOT NULL,   notification_type TEXT,   is_read INTEGER NOT NULL DEFAULT 0,   created_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "question_options",
+    "sql": "CREATE TABLE question_options (   id TEXT PRIMARY KEY,   question_id TEXT NOT NULL REFERENCES questions(id),   option_label TEXT NOT NULL,   option_text TEXT NOT NULL,   is_correct INTEGER NOT NULL DEFAULT 0 CHECK (is_correct IN (0,1)),   sort_order INTEGER NOT NULL DEFAULT 0 )"
+  },
+  {
+    "name": "questions",
+    "sql": "CREATE TABLE questions (   id TEXT PRIMARY KEY,   subject_id TEXT REFERENCES subjects(id),   class_id TEXT REFERENCES classes(id),   teacher_id TEXT REFERENCES users(id),   topic TEXT,   difficulty TEXT NOT NULL DEFAULT 'medium' CHECK (difficulty IN ('easy','medium','hard')),   question_type TEXT NOT NULL CHECK (question_type IN ('mcq','multiple_select','numerical','short_answer','long_answer')),   question_text TEXT NOT NULL,   explanation TEXT,   default_marks REAL NOT NULL DEFAULT 1,   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),   created_at TEXT NOT NULL DEFAULT (datetime('now')),   updated_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "results",
+    "sql": "CREATE TABLE results (   id TEXT PRIMARY KEY,   attempt_id TEXT NOT NULL UNIQUE REFERENCES exam_attempts(id),   student_id TEXT NOT NULL REFERENCES users(id),   exam_id TEXT NOT NULL REFERENCES exams(id),   total_marks REAL NOT NULL,   marks_obtained REAL NOT NULL,   percentage REAL NOT NULL,   evaluated_by TEXT REFERENCES users(id),   published_at TEXT,   created_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "student_answers",
+    "sql": "CREATE TABLE student_answers (   id TEXT PRIMARY KEY,   attempt_id TEXT NOT NULL REFERENCES exam_attempts(id),   exam_question_id TEXT NOT NULL REFERENCES exam_questions(id),   answer_text TEXT,   selected_option_ids TEXT,   is_correct INTEGER,   marks_awarded REAL,   answered_at TEXT,   UNIQUE(attempt_id, exam_question_id) )"
+  },
+  {
+    "name": "student_fee_accounts",
+    "sql": "CREATE TABLE student_fee_accounts (   id TEXT PRIMARY KEY,   student_id TEXT NOT NULL REFERENCES users(id),   fee_plan_id TEXT REFERENCES fee_plans(id),   total_amount_paise INTEGER NOT NULL,   paid_amount_paise INTEGER NOT NULL DEFAULT 0,   due_date TEXT,   status TEXT NOT NULL DEFAULT 'pending',   created_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "student_profiles",
+    "sql": "CREATE TABLE student_profiles (   user_id TEXT PRIMARY KEY REFERENCES users(id),   admission_number TEXT UNIQUE,   date_of_birth TEXT,   guardian_name TEXT,   guardian_phone TEXT,   guardian_email TEXT,   address TEXT,   notes TEXT,   created_at TEXT NOT NULL DEFAULT (datetime('now')),   updated_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "study_materials",
+    "sql": "CREATE TABLE study_materials (   id TEXT PRIMARY KEY,   title TEXT NOT NULL,   description TEXT,   class_id TEXT REFERENCES classes(id),   subject_id TEXT REFERENCES subjects(id),   batch_id TEXT REFERENCES batches(id),   teacher_id TEXT NOT NULL REFERENCES users(id),   r2_object_key TEXT NOT NULL,   file_name TEXT NOT NULL,   mime_type TEXT,   file_size_bytes INTEGER,   visibility TEXT NOT NULL DEFAULT 'assigned' CHECK (visibility IN ('assigned','all_students')),   created_at TEXT NOT NULL DEFAULT (datetime('now')),   deleted_at TEXT )"
+  },
+  {
+    "name": "subjects",
+    "sql": "CREATE TABLE subjects (     id INTEGER PRIMARY KEY AUTOINCREMENT,     subject_name TEXT NOT NULL UNIQUE,     status TEXT NOT NULL DEFAULT 'active',     created_at TEXT DEFAULT CURRENT_TIMESTAMP )"
+  },
+  {
+    "name": "submission_attachments",
+    "sql": "CREATE TABLE submission_attachments (   id TEXT PRIMARY KEY,   submission_id TEXT NOT NULL REFERENCES assignment_submissions(id),   r2_object_key TEXT NOT NULL,   file_name TEXT NOT NULL,   mime_type TEXT,   file_size_bytes INTEGER,   created_at TEXT NOT NULL DEFAULT (datetime('now')) )"
+  },
+  {
+    "name": "teacher_assignments",
+    "sql": "CREATE TABLE teacher_assignments (     id INTEGER PRIMARY KEY AUTOINCREMENT,     teacher_id TEXT NOT NULL,     class_id INTEGER NOT NULL,     subject_id INTEGER NOT NULL,     created_at TEXT DEFAULT CURRENT_TIMESTAMP,     FOREIGN KEY (teacher_id) REFERENCES users(id),     FOREIGN KEY (class_id) REFERENCES classes(id),     FOREIGN KEY (subject_id) REFERENCES subjects(id),     UNIQUE (teacher_id, class_id, subject_id) )"
+  },
+  {
+    "name": "users",
+    "sql": "CREATE TABLE users (     id TEXT PRIMARY KEY,     full_name TEXT NOT NULL,     role TEXT NOT NULL CHECK (role IN ('admin', 'teacher', 'student')),     status TEXT NOT NULL DEFAULT 'pending',     created_at TEXT DEFAULT CURRENT_TIMESTAMP , email TEXT, deleted_at TEXT, deleted_by TEXT, phone TEXT, profile_photo_key TEXT)"
+  }
+]
