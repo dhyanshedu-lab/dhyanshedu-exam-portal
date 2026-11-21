@@ -23,7 +23,7 @@ sources = [
     ROOT / "worker/src/study.js",
 ]
 prepared = []
-pattern = re.compile(r"\\.prepare\\(\\s*(\"(?:\\\\.|[^\"\\\\])*\")\\s*\\)", re.S)
+pattern = re.compile(r"\.prepare\(\s*(\"(?:\\.|[^\"\\])*\")\s*\)", re.S)
 for source_path in sources:
     source = source_path.read_text()
     for match in pattern.finditer(source):
