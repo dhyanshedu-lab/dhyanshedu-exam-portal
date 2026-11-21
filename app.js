@@ -1369,14 +1369,19 @@ async function loadAdminAdmissions() {
       el.replaceChildren(); const first=document.createElement("option");first.value="";first.textContent=placeholder;el.append(first);
       items.forEach(item=>{const o=document.createElement("option");o.value=item.id;o.textContent=label(item);el.append(o);});
     };
+    const activeClasses=(classData.classes||[]).filter(x=>x.status==="active");
+    const activeSubjects=(subjectData.subjects||[]).filter(x=>x.status==="active");
     fill("#admission-student",admissionStudentCache,s=>s.full_name+" · "+s.email,"Select approved student");
-    fill("#admission-class",(classData.classes||[]).filter(x=>x.status==="active"),x=>x.class_name+(x.section?" - "+x.section:""),"Select class");
-    fill("#admission-subject",(subjectData.subjects||[]).filter(x=>x.status==="active"),x=>x.subject_name,"Select subject");
+    fill("#admission-class",activeClasses,x=>x.class_name+(x.section?" - "+x.section:""),"Select class");
+    fill("#admission-subject",activeSubjects,x=>x.subject_name,"Select subject");
+    if(!$("#admission-date").value) $("#admission-date").value=new Date().toISOString().slice(0,10);
     fill("#admission-enquiry",(enquiryData.enquiries||[]).filter(x=>x.status!=="converted"),x=>x.student_name+" · "+x.phone,"No linked enquiry");
     body.replaceChildren();
+    const classNames=new Map((classData.classes||[]).map(x=>[String(x.id),x.class_name+(x.section?" - "+x.section:"")]));
+    const subjectNames=new Map((subjectData.subjects||[]).map(x=>[String(x.id),x.subject_name]));
     (admissionData.admissions||[]).forEach(a=>{
       const tr=body.insertRow();
-      [a.admission_number,a.student_name,a.email,a.admission_date,a.class_id||"—",a.subject_id||"—",a.learning_mode||"—",a.status].forEach(v=>{const td=tr.insertCell();td.textContent=v??"—";});
+      [a.admission_number,a.student_name,a.email,a.admission_date,classNames.get(String(a.class_id))||"—",subjectNames.get(String(a.subject_id))||"—",a.learning_mode||"—",a.status].forEach(v=>{const td=tr.insertCell();td.textContent=v??"—";});
     });
     if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=8;td.textContent="No admissions recorded yet.";}
     $("#admission-message").textContent="";
