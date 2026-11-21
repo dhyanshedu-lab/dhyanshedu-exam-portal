@@ -154,7 +154,10 @@ function roleWorkspaceSection() {
           <div><button class="btn btn-primary" type="submit" id="save-exam-button">Create exam</button></div>
         </form><p id="exam-form-message" class="message"></p>
       </div>
-      <div class="table-card"><div class="table-heading"><h3>My exams</h3></div><div class="table-scroll"><table><thead><tr><th>Exam</th><th>Batch</th><th>Questions</th><th>Total marks</th><th>Schedule</th><th>Status</th><th>Action</th></tr></thead><tbody id="teacher-exam-list"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div>`;
+      <div class="table-card"><div class="table-heading"><h3>My exams</h3></div><div class="table-scroll"><table><thead><tr><th>Exam</th><th>Batch</th><th>Questions</th><th>Total marks</th><th>Schedule</th><th>Status</th><th>Action</th></tr></thead><tbody id="teacher-exam-list"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div>
+      <div class="section-heading lower"><div><h2>Evaluation Centre</h2><p class="muted">Review submitted answers, award marks, add feedback and publish results.</p></div></div>
+      <div class="table-card"><div class="table-heading"><h3>Student submissions</h3></div><div class="table-scroll"><table><thead><tr><th>Student</th><th>Exam</th><th>Batch</th><th>Submitted</th><th>Status</th><th>Score</th><th>Action</th></tr></thead><tbody id="teacher-evaluation-list"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div>
+      <div id="teacher-evaluation-panel" class="hidden"></div>`;
     section.append(authoring);
   } else if (profile?.role === "student") {
     const exams = document.createElement("div");
@@ -339,6 +342,83 @@ async function submitStudentExam(auto=false) {
   }catch(error){alert(error.message);if(submit)submit.disabled=false;}
 }
 
+async function loadTeacherEvaluations() {
+  const body=$("#teacher-evaluation-list");if(!body)return;
+  body.innerHTML='<tr><td colspan="7">Loading…</td></tr>';
+  try{
+    const result=await api("/api/teacher/evaluations");
+    body.replaceChildren();
+    const rows=result.evaluations||[];
+    if(!rows.length){const row=body.insertRow();const cell=row.insertCell();cell.colSpan=7;cell.textContent="No student submissions are waiting for evaluation.";return;}
+    rows.forEach(item=>{
+      const row=body.insertRow();
+      [item.student_name,item.exam_title,item.batch_name,item.submitted_at?new Date(item.submitted_at).toLocaleString():"—",item.attempt_status,
+       item.marks_obtained==null?"Pending":`${item.marks_obtained} / ${item.total_marks}`].forEach(value=>{const cell=row.insertCell();cell.textContent=value??"—";});
+      const action=row.insertCell();
+      const button=document.createElement("button");button.type="button";button.className="btn btn-primary btn-small";
+      button.textContent=item.published_at?"View":"Review";
+      button.addEventListener("click",()=>openTeacherEvaluation(item.attempt_id));
+      action.append(button);
+    });
+  }catch(error){body.replaceChildren();const row=body.insertRow();const cell=row.insertCell();cell.colSpan=7;cell.textContent=error.message;}
+}
+
+async function openTeacherEvaluation(attemptId) {
+  const panel=$("#teacher-evaluation-panel");panel.classList.remove("hidden");panel.replaceChildren();
+  const loading=document.createElement("p");loading.textContent="Loading student answers…";panel.append(loading);
+  try{
+    const result=await api(`/api/teacher/evaluations/${encodeURIComponent(attemptId)}`);
+    const attempt=result.attempt,questions=result.questions||[];
+    panel.replaceChildren();
+    const heading=document.createElement("div");heading.className="section-heading lower";
+    const title=document.createElement("h2");title.textContent=`${attempt.student_name} — ${attempt.exam_title}`;
+    const summary=document.createElement("p");summary.className="muted";summary.textContent=`Batch: ${attempt.batch_name} · Submitted: ${attempt.submitted_at?new Date(attempt.submitted_at).toLocaleString():"—"} · Maximum: ${attempt.total_marks} marks`;
+    heading.append(title);panel.append(heading,summary);
+    const form=document.createElement("form");form.id="teacher-grade-form";form.dataset.attemptId=attemptId;
+    questions.forEach((q,index)=>{
+      const card=document.createElement("article");card.className="table-card evaluation-question";
+      const h=document.createElement("h3");h.textContent=`Question ${index+1} · ${q.question_type} · ${q.marks} marks`;
+      const prompt=document.createElement("p");prompt.textContent=q.question_text;
+      card.append(h,prompt);
+      if(q.options?.length){
+        const list=document.createElement("ul");
+        q.options.forEach(o=>{const li=document.createElement("li");li.textContent=`${o.label}. ${o.text}${o.is_correct?" — Correct answer":""}`;list.append(li);});
+        card.append(list);
+      }
+      const answer=document.createElement("div");answer.className="evaluation-answer";
+      answer.textContent=q.answer_text||((q.selected_option_ids||"")?"Selected option IDs: "+q.selected_option_ids:"No answer submitted");
+      card.append(answer);
+      if(["numerical","short_answer","long_answer"].includes(q.question_type)){
+        const grade=document.createElement("div");grade.className="evaluation-grade-fields";
+        const label=document.createElement("label");label.textContent=`Marks awarded (0–${q.marks})`;
+        const input=document.createElement("input");input.type="number";input.min="0";input.max=String(q.marks);input.step="0.25";input.required=true;input.value=q.marks_awarded==null?"":String(q.marks_awarded);input.dataset.questionId=q.exam_question_id;
+        const feedbackLabel=document.createElement("label");feedbackLabel.textContent="Feedback for student";
+        const feedback=document.createElement("textarea");feedback.rows=2;feedback.maxLength=2000;feedback.value=q.teacher_feedback||"";feedback.dataset.feedbackFor=q.exam_question_id;feedback.placeholder="Explain what was correct and what can improve";
+        grade.append(label,input,feedbackLabel,feedback);card.append(grade);
+      }else{
+        const score=document.createElement("p");score.className="muted";score.textContent=`Automatically awarded: ${q.marks_awarded??0} marks`;card.append(score);
+      }
+      form.append(card);
+    });
+    if(attempt.attempt_status!=="evaluated"){
+      const save=document.createElement("button");save.type="submit";save.className="btn btn-primary";save.textContent="Save evaluation";form.append(save);
+    }else{
+      const note=document.createElement("p");note.className="message";note.textContent="Evaluation completed.";form.append(note);
+    }
+    if(!attempt.published_at){
+      const publish=document.createElement("button");publish.type="button";publish.className="btn btn-primary";publish.textContent="Publish result";publish.addEventListener("click",async()=>{
+        if(!confirm("Publish this result so the student can see the score and feedback?"))return;
+        publish.disabled=true;
+        try{await api(`/api/teacher/evaluations/${encodeURIComponent(attemptId)}/publish`,{method:"POST"});await openTeacherEvaluation(attemptId);await loadTeacherEvaluations();}
+        catch(error){alert(error.message);publish.disabled=false;}
+      });form.append(publish);
+    }else{
+      const published=document.createElement("p");published.className="message";published.textContent="Result published to the student.";form.append(published);
+    }
+    panel.append(form);panel.scrollIntoView({behavior:"smooth",block:"start"});
+  }catch(error){panel.replaceChildren();const message=document.createElement("p");message.className="message";message.textContent=error.message;panel.append(message);}
+}
+
 let teacherWorkspaceBatches = [];
 let teacherWorkspaceQuestions = [];
 
@@ -458,6 +538,7 @@ async function loadRoleWorkspace(role) {
       });
       $("#exam-batch").addEventListener("change",refreshExamQuestionOptions);
       await loadTeacherAuthoring();
+      await loadTeacherEvaluations();
     } else if (role === "student") {
       await loadStudentExams();
     }
@@ -882,6 +963,24 @@ async function loadAdminPage(name) {
     if (name==="teachers") await loadTeachers();
   } catch(error) { $("#dashboard-message").textContent=error.message; }
 }
+
+document.addEventListener("submit",async e=>{
+  if(e.target.id!=="teacher-grade-form") return;
+  e.preventDefault();
+  const form=e.target,button=form.querySelector('button[type="submit"]');
+  const grades=Array.from(form.querySelectorAll("input[data-question-id]")).map(input=>({
+    exam_question_id:input.dataset.questionId,
+    marks_awarded:Number(input.value),
+    teacher_feedback:form.querySelector(`textarea[data-feedback-for="${input.dataset.questionId}"]`)?.value||""
+  }));
+  button.disabled=true;button.textContent="Saving evaluation…";
+  try{
+    const result=await api(`/api/teacher/evaluations/${encodeURIComponent(form.dataset.attemptId)}/grade`,{method:"POST",body:JSON.stringify({grades})});
+    await loadTeacherEvaluations();
+    await openTeacherEvaluation(form.dataset.attemptId);
+    alert(`Evaluation saved. Final score: ${result.marks_obtained} / ${result.total_marks}.`);
+  }catch(error){alert(error.message);button.disabled=false;button.textContent="Save evaluation";}
+});
 
 document.addEventListener("click",async e=>{
   const save=e.target.closest(".student-save-answer");
