@@ -106,3 +106,11 @@ textarea{resize:vertical;min-height:76px;line-height:1.5}
 #teacher-attendance-roster select{min-width:130px}
 #admin-live-attendance td{white-space:normal}
 @media(max-width:680px){#live-classes-page .form-grid{grid-template-columns:1fr}}
+
+
+/* Study materials and assignment management */
+#teacher-authoring #teacher-material-form input[type=file],#teacher-authoring #teacher-assignment-form input[type=file],#student-submission-panel input[type=file]{padding:9px;background:#fbfcfe}
+#teacher-submissions-panel .form-card,#student-submission-panel .form-card{margin-top:18px}
+#teacher-submission-rows input,#teacher-submission-rows textarea{min-width:100px;padding:8px}
+#teacher-assignment-list td:first-child,#student-assignment-list td:first-child{font-weight:700;min-width:160px}
+#my-materials-list td{white-space:normal}
