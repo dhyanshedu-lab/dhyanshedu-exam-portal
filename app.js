@@ -79,14 +79,15 @@ function showPendingApproval() {
 }
 
 function page(name) {
-  $("#overview-page").classList.toggle("hidden", name !== "overview");
-  $("#teachers-page").classList.toggle("hidden", name !== "teachers");
-
+  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students"];
+  for (const pageName of pages) {
+    const section = $(`#${pageName}-page`);
+    if (section) section.classList.toggle("hidden", pageName !== name);
+  }
   document.querySelectorAll(".nav-item[data-page]").forEach(x =>
     x.classList.toggle("active", x.dataset.page === name)
   );
-
-  if (name === "teachers") loadTeachers();
+  if (name !== "overview") loadAdminPage(name);
 }
 
 function dashboard(p, email) {
@@ -301,6 +302,202 @@ async function loadTeachers() {
     body.append(tr);
   }
 }
+
+
+const adminCache = { teachers: [], students: [], classes: [], subjects: [], batches: [] };
+
+function showMessage(id, message) {
+  const el = $("#" + id);
+  if (el) el.textContent = message || "";
+}
+function fillSelect(select, items, label, placeholder) {
+  select.replaceChildren();
+  const first = document.createElement("option");
+  first.value = "";
+  first.textContent = placeholder;
+  select.append(first);
+  items.forEach(item => {
+    const option = document.createElement("option");
+    option.value = item.id;
+    option.textContent = label(item);
+    select.append(option);
+  });
+}
+function addCell(row, value) {
+  const td = document.createElement("td");
+  td.textContent = value ?? "—";
+  row.append(td);
+  return td;
+}
+function addStatusSelect(parent, current, values, save) {
+  const select = document.createElement("select");
+  select.className = "status-select";
+  values.forEach(value => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value[0].toUpperCase() + value.slice(1);
+    option.selected = value === current;
+    select.append(option);
+  });
+  select.addEventListener("change", async () => {
+    select.disabled = true;
+    try { await save(select.value); await loadAdminPage(document.querySelector(".nav-item.active")?.dataset.page); }
+    catch (error) { alert(error.message); select.disabled = false; }
+  });
+  parent.append(select);
+}
+function statusTag(value) {
+  const span = document.createElement("span");
+  span.className = `status-pill ${value}`;
+  span.textContent = value;
+  return span;
+}
+async function loadClasses() {
+  const body = $("#class-list"); body.replaceChildren();
+  const { classes } = await api("/api/classes");
+  adminCache.classes = classes;
+  classes.forEach(item => {
+    const row = body.insertRow();
+    addCell(row, item.class_name); addCell(row, item.section || "—"); addCell(row, item.academic_year || "—");
+    const status = row.insertCell(); status.append(statusTag(item.status));
+    addStatusSelect(row.insertCell(), item.status, ["active", "inactive"], value =>
+      api(`/api/classes/${item.id}/status`, { method: "PATCH", body: JSON.stringify({ status: value }) })
+    );
+  });
+  if (!classes.length) { const row=body.insertRow(); const td=addCell(row,"No classes created yet."); td.colSpan=5; }
+}
+async function loadSubjects() {
+  const body = $("#subject-list"); body.replaceChildren();
+  const { subjects } = await api("/api/subjects");
+  adminCache.subjects = subjects;
+  subjects.forEach(item => {
+    const row=body.insertRow(); addCell(row,item.subject_name);
+    const status=row.insertCell(); status.append(statusTag(item.status));
+    addStatusSelect(row.insertCell(),item.status,["active","inactive"],value =>
+      api(`/api/subjects/${item.id}/status`,{method:"PATCH",body:JSON.stringify({status:value})})
+    );
+  });
+  if (!subjects.length) { const row=body.insertRow(); const td=addCell(row,"No subjects created yet."); td.colSpan=3; }
+}
+async function loadBatches() {
+  const body=$("#batch-list"); body.replaceChildren();
+  const [batchData,classData,subjectData,teacherData,studentData]=await Promise.all([
+    api("/api/batches"),api("/api/classes"),api("/api/subjects"),api("/api/teachers"),api("/api/students")
+  ]);
+  adminCache.batches=batchData.batches;
+  adminCache.classes=classData.classes;
+  adminCache.subjects=subjectData.subjects;
+  adminCache.teachers=teacherData.teachers.filter(x=>x.status==="approved");
+  adminCache.students=studentData.students.filter(x=>x.status==="approved");
+  fillSelect($("#batch-class"),adminCache.classes.filter(x=>x.status==="active"),x=>`${x.class_name}${x.section ? " - "+x.section : ""}`,"Select class");
+  fillSelect($("#batch-subject"),adminCache.subjects.filter(x=>x.status==="active"),x=>x.subject_name,"Select subject");
+  fillSelect($("#manage-batch"),adminCache.batches.filter(x=>x.status==="active"),x=>x.batch_name,"Select batch");
+  fillSelect($("#batch-teacher"),adminCache.teachers,x=>x.full_name,"Select approved teacher");
+  fillSelect($("#batch-student"),adminCache.students,x=>x.full_name,"Select approved student");
+  adminCache.batches.forEach(item=>{
+    const row=body.insertRow(); addCell(row,item.batch_name); addCell(row,item.class_name || "—"); addCell(row,item.subject_name || "—");
+    addCell(row,item.batch_type==="one_to_one"?"One-to-one":"Group");
+    const status=row.insertCell(); status.append(statusTag(item.status));
+    addStatusSelect(row.insertCell(),item.status,["active","inactive","completed"],value=>
+      api(`/api/batches/${item.id}/status`,{method:"PATCH",body:JSON.stringify({status:value})})
+    );
+  });
+  if (!adminCache.batches.length) { const row=body.insertRow(); const td=addCell(row,"No batches created yet."); td.colSpan=6; }
+}
+async function loadAssignments() {
+  const body=$("#assignment-list"); body.replaceChildren();
+  const [a,t,c,s]=await Promise.all([api("/api/teacher-assignments"),api("/api/teachers"),api("/api/classes"),api("/api/subjects")]);
+  adminCache.teachers=t.teachers.filter(x=>x.status==="approved");
+  adminCache.classes=c.classes.filter(x=>x.status==="active");
+  adminCache.subjects=s.subjects.filter(x=>x.status==="active");
+  fillSelect($("#assignment-teacher"),adminCache.teachers,x=>x.full_name,"Select teacher");
+  fillSelect($("#assignment-class"),adminCache.classes,x=>`${x.class_name}${x.section ? " - "+x.section : ""}`,"Select class");
+  fillSelect($("#assignment-subject"),adminCache.subjects,x=>x.subject_name,"Select subject");
+  a.assignments.forEach(item=>{
+    const row=body.insertRow(); addCell(row,item.teacher_name); addCell(row,item.class_name || "—"); addCell(row,item.subject_name || "—");
+    const action=row.insertCell(); const btn=document.createElement("button"); btn.className="btn btn-danger btn-small"; btn.textContent="Remove";
+    btn.addEventListener("click",async()=>{if(!confirm("Remove this teacher assignment?"))return;try{await api(`/api/teacher-assignments/${item.id}`,{method:"DELETE"});await loadAssignments();}catch(e){alert(e.message);}});
+    action.append(btn);
+  });
+  if (!a.assignments.length) { const row=body.insertRow(); const td=addCell(row,"No teacher assignments yet."); td.colSpan=4; }
+}
+async function loadStudents() {
+  const body=$("#student-list"); body.replaceChildren();
+  const {students}=await api("/api/students"); adminCache.students=students;
+  students.forEach(item=>{
+    const row=body.insertRow(); addCell(row,item.full_name); addCell(row,item.email);
+    const status=row.insertCell(); status.append(statusTag(item.status));
+    addStatusSelect(row.insertCell(),item.status,["pending","approved","inactive"],value=>
+      api(`/api/students/${item.id}/status`,{method:"PATCH",body:JSON.stringify({status:value})})
+    );
+  });
+  if (!students.length) { const row=body.insertRow(); const td=addCell(row,"No students invited yet."); td.colSpan=4; }
+}
+async function loadAdminPage(name) {
+  try {
+    if (name==="classes") await loadClasses();
+    if (name==="subjects") await loadSubjects();
+    if (name==="batches") await loadBatches();
+    if (name==="assignments") await loadAssignments();
+    if (name==="students") await loadStudents();
+    if (name==="teachers") await loadTeachers();
+  } catch(error) { $("#dashboard-message").textContent=error.message; }
+}
+
+$("#class-form").addEventListener("submit",async e=>{
+  e.preventDefault(); const b=$("#save-class-button"); b.disabled=true;
+  try {
+    await api("/api/classes",{method:"POST",body:JSON.stringify({
+      class_name:$("#class-name").value.trim(),section:$("#class-section").value.trim(),academic_year:$("#class-year").value.trim()
+    })});
+    $("#class-form").reset(); showMessage("class-message","Class created successfully."); await loadClasses();
+  } catch(error){showMessage("class-message",error.message);} finally{b.disabled=false;}
+});
+$("#subject-form").addEventListener("submit",async e=>{
+  e.preventDefault(); const b=$("#save-subject-button"); b.disabled=true;
+  try {
+    await api("/api/subjects",{method:"POST",body:JSON.stringify({subject_name:$("#subject-name").value.trim()})});
+    $("#subject-form").reset(); showMessage("subject-message","Subject created successfully."); await loadSubjects();
+  } catch(error){showMessage("subject-message",error.message);} finally{b.disabled=false;}
+});
+$("#batch-form").addEventListener("submit",async e=>{
+  e.preventDefault(); const b=$("#save-batch-button"); b.disabled=true;
+  try {
+    await api("/api/batches",{method:"POST",body:JSON.stringify({
+      batch_name:$("#batch-name").value.trim(),batch_type:$("#batch-type").value,
+      class_id:$("#batch-class").value || null,subject_id:$("#batch-subject").value || null,
+      capacity:$("#batch-capacity").value || null,start_date:$("#batch-start").value || null,end_date:$("#batch-end").value || null
+    })});
+    $("#batch-form").reset(); showMessage("batch-message","Batch created successfully."); await loadBatches();
+  } catch(error){showMessage("batch-message",error.message);} finally{b.disabled=false;}
+});
+$("#batch-teacher-form").addEventListener("submit",async e=>{
+  e.preventDefault(); const batch=$("#manage-batch").value;
+  if(!batch){showMessage("batch-assign-message","Select a batch first.");return;}
+  try{await api(`/api/batches/${batch}/teachers`,{method:"POST",body:JSON.stringify({teacher_id:$("#batch-teacher").value})});showMessage("batch-assign-message","Teacher assigned to batch.");}
+  catch(error){showMessage("batch-assign-message",error.message);}
+});
+$("#batch-student-form").addEventListener("submit",async e=>{
+  e.preventDefault(); const batch=$("#manage-batch").value;
+  if(!batch){showMessage("batch-assign-message","Select a batch first.");return;}
+  try{await api(`/api/batches/${batch}/students`,{method:"POST",body:JSON.stringify({student_id:$("#batch-student").value})});showMessage("batch-assign-message","Student enrolled in batch.");}
+  catch(error){showMessage("batch-assign-message",error.message);}
+});
+$("#teacher-assignment-form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  try{await api("/api/teacher-assignments",{method:"POST",body:JSON.stringify({
+    teacher_id:$("#assignment-teacher").value,class_id:$("#assignment-class").value,subject_id:$("#assignment-subject").value
+  })});showMessage("assignment-message","Teacher assignment created.");await loadAssignments();}
+  catch(error){showMessage("assignment-message",error.message);}
+});
+$("#student-form").addEventListener("submit",async e=>{
+  e.preventDefault(); const b=$("#save-student-button"); b.disabled=true; b.textContent="Sending…";
+  try{await api("/api/students",{method:"POST",body:JSON.stringify({
+    full_name:$("#student-full-name").value.trim(),email:$("#student-email").value.trim()
+  })});$("#student-form").reset();showMessage("student-message","Student invitation sent. Access is pending Admin approval.");await loadStudents();}
+  catch(error){showMessage("student-message",error.message);}
+  finally{b.disabled=false;b.textContent="+ Invite student";}
+});
 
 async function completeInvitation(e) {
   e.preventDefault();

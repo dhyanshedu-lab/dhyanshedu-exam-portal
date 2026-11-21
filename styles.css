@@ -29,3 +29,28 @@
   .brand-mark{flex-basis:38px;width:38px;height:38px}
   .banner-logo{width:68px;height:68px}
 }
+
+/* Consolidated Admin module */
+.form-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:22px;margin:18px 0}
+.form-card h3{margin:0 0 18px;font-size:16px}
+.inline-form{display:flex;align-items:end;gap:14px;flex-wrap:wrap}
+.inline-form>div{flex:1 1 190px}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:end}
+.form-grid>div,.form-grid>form{min-width:0}
+.form-card label{display:block;font-size:12px;font-weight:700;margin:0 0 7px}
+.form-card input,.form-card select{width:100%;border:1px solid #dce2eb;border-radius:9px;padding:11px 12px;background:#fff;color:var(--ink);min-height:43px}
+.form-card .btn{min-height:43px}
+.btn-secondary{background:#edf1f6;color:#253b58;border:1px solid #d9e1eb}
+.btn-danger{background:#fff1ef;color:#a3332b;border:1px solid #f1c5c0}
+.btn-small{padding:7px 10px;font-size:11px;margin:3px;white-space:nowrap}
+.table-card{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:18px 0}
+.table-heading{padding:18px 20px;border-bottom:1px solid var(--line)}
+.table-heading h3{margin:0 0 5px;font-size:16px}
+.table-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:650px}
+th,td{text-align:left;padding:13px 15px;border-bottom:1px solid #edf0f4;font-size:12px;vertical-align:middle}
+th{background:#f8f9fb;color:#66748a;font-weight:700}
+td select.status-select{max-width:130px;padding:7px;border:1px solid #dce2eb;border-radius:7px;background:#fff;color:var(--ink)}
+.page-title{margin-top:8px}
+@media(max-width:900px){.dashboard{grid-template-columns:210px 1fr}.form-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:680px){.dashboard{display:block}.sidebar{min-height:auto;padding:14px}.side-brand{margin:0 8px 15px}.sidebar nav{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.nav-item{padding:10px;font-size:12px}.sidebar-bottom{margin-top:15px}.secure-note{display:none}.signout{margin:12px 8px}.topbar{height:auto;min-height:80px;padding:16px 5%}.content{padding:20px 5%}.form-grid{grid-template-columns:1fr}.inline-form{display:grid;grid-template-columns:1fr}.welcome-banner{padding:22px}.banner-logo{width:65px;height:65px}}

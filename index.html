@@ -56,7 +56,7 @@
     <a class="brand" href="https://dhyanshedu.com"><span class="brand-mark"><img src="./logo.png" alt="DhyanshEdu logo"></span><span>Dhyansh<span class="gold">Edu</span></span></a>
     <div class="login-copy">
       <p class="eyebrow">WELCOME TO DHYANSHEDU</p>
-      <h1>Set up your<br><span>teacher account.</span></h1>
+      <h1>Set up your<br><span>DhyanshEdu account.</span></h1>
       <p class="muted">Create a password to complete your invitation.</p>
     </div>
     <p class="copyright">© <span id="invite-year"></span> DhyanshEdu</p>
@@ -64,7 +64,7 @@
   <div class="login-panel">
     <div class="login-card">
       <div class="mobile-brand brand"><span class="brand-mark"><img src="./logo.png" alt="DhyanshEdu logo"></span><span>Dhyansh<span class="gold">Edu</span></span></div>
-      <p class="eyebrow">TEACHER ACCOUNT ACTIVATION</p>
+      <p class="eyebrow">ACCOUNT ACTIVATION</p>
       <h2>Create your password</h2>
       <p class="muted">Choose a password you will use to sign in to the exam portal.</p>
       <form id="invite-form">
@@ -92,9 +92,9 @@
   <div class="login-panel">
     <div class="login-card">
       <div class="mobile-brand brand"><span class="brand-mark"><img src="./logo.png" alt="DhyanshEdu logo"></span><span>Dhyansh<span class="gold">Edu</span></span></div>
-      <p class="eyebrow">TEACHER ACCESS</p>
+      <p class="eyebrow">ACCOUNT ACCESS</p>
       <h2>Awaiting approval</h2>
-      <p class="muted">Your account setup is complete. The DhyanshEdu administrator must approve your account before you can access the teacher workspace.</p>
+      <p class="muted">Your account setup is complete. The DhyanshEdu administrator must approve your account before you can access your workspace.</p>
       <p id="pending-message" class="message" role="status">Please sign in after the administrator confirms your approval.</p>
       <button id="pending-login-button" class="btn btn-primary full" type="button">Return to sign in</button>
     </div>
@@ -108,9 +108,11 @@
     <nav>
       <a class="nav-item active" data-page="overview" href="#overview"><span>▦</span> Overview</a>
       <a class="nav-item" data-page="teachers" data-admin-only href="#teachers"><span>♙</span> Teachers</a>
-      <a class="nav-item" data-admin-only href="#students"><span>♧</span> Students</a>
-      <a class="nav-item" data-admin-only href="#exams"><span>▤</span> Examinations</a>
-      <a class="nav-item" data-admin-only href="#results"><span>◷</span> Results</a>
+      <a class="nav-item" data-page="classes" data-admin-only href="#classes"><span>▣</span> Classes</a>
+      <a class="nav-item" data-page="subjects" data-admin-only href="#subjects"><span>◈</span> Subjects</a>
+      <a class="nav-item" data-page="batches" data-admin-only href="#batches"><span>▤</span> Batches</a>
+      <a class="nav-item" data-page="assignments" data-admin-only href="#assignments"><span>⇄</span> Teacher assignments</a>
+      <a class="nav-item" data-page="students" data-admin-only href="#students"><span>♧</span> Students</a>
     </nav>
     <div class="sidebar-bottom">
       <div class="secure-note"><span>●</span><div><b>Secure workspace</b><small>Role-based access enabled</small></div></div>
@@ -148,6 +150,59 @@
         </div>
         <div class="table-card"><div class="table-heading"><h3>Teachers</h3><p class="muted">Invitations and account status</p></div><div class="table-scroll"><table><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Manage status</th></tr></thead><tbody id="teacher-list"><tr><td colspan="4">Loading teachers…</td></tr></tbody></table></div></div>
         <p class="hint">Invited teachers remain blocked until you approve them.</p>
+      </section>
+      <section id="classes-page" class="hidden">
+        <div class="section-heading page-title"><div><h2>Class management</h2><p class="muted">Create and manage academic classes and sections.</p></div></div>
+        <div class="form-card"><form id="class-form" class="inline-form">
+          <div><label for="class-name">Class name</label><input id="class-name" required maxlength="80" placeholder="e.g. Class 11"></div>
+          <div><label for="class-section">Section (optional)</label><input id="class-section" maxlength="30" placeholder="e.g. A"></div>
+          <div><label for="class-year">Academic year</label><input id="class-year" maxlength="30" placeholder="e.g. 2026-27"></div>
+          <button class="btn btn-primary" id="save-class-button" type="submit">+ Add class</button>
+        </form><p id="class-message" class="message"></p></div>
+        <div class="table-card"><div class="table-heading"><h3>Classes</h3></div><div class="table-scroll"><table><thead><tr><th>Class</th><th>Section</th><th>Academic year</th><th>Status</th><th>Action</th></tr></thead><tbody id="class-list"></tbody></table></div></div>
+      </section>
+      <section id="subjects-page" class="hidden">
+        <div class="section-heading page-title"><div><h2>Subject management</h2><p class="muted">Maintain subjects offered by DhyanshEdu.</p></div></div>
+        <div class="form-card"><form id="subject-form" class="inline-form"><div><label for="subject-name">Subject name</label><input id="subject-name" required maxlength="80" placeholder="e.g. Mathematics"></div><button class="btn btn-primary" id="save-subject-button" type="submit">+ Add subject</button></form><p id="subject-message" class="message"></p></div>
+        <div class="table-card"><div class="table-heading"><h3>Subjects</h3></div><div class="table-scroll"><table><thead><tr><th>Subject</th><th>Status</th><th>Action</th></tr></thead><tbody id="subject-list"></tbody></table></div></div>
+      </section>
+      <section id="batches-page" class="hidden">
+        <div class="section-heading page-title"><div><h2>Batch management</h2><p class="muted">Create group and one-to-one learning batches.</p></div></div>
+        <div class="form-card"><form id="batch-form" class="form-grid">
+          <div><label for="batch-name">Batch name</label><input id="batch-name" required maxlength="120" placeholder="e.g. Class 11 Maths Evening"></div>
+          <div><label for="batch-type">Batch type</label><select id="batch-type"><option value="group">Group class</option><option value="one_to_one">One-to-one</option></select></div>
+          <div><label for="batch-class">Class</label><select id="batch-class"><option value="">Select class</option></select></div>
+          <div><label for="batch-subject">Subject</label><select id="batch-subject"><option value="">Select subject</option></select></div>
+          <div><label for="batch-capacity">Capacity (optional)</label><input id="batch-capacity" type="number" min="1"></div>
+          <div><label for="batch-start">Start date</label><input id="batch-start" type="date"></div>
+          <div><label for="batch-end">End date</label><input id="batch-end" type="date"></div>
+          <button class="btn btn-primary" id="save-batch-button" type="submit">+ Create batch</button>
+        </form><p id="batch-message" class="message"></p></div>
+        <div class="table-card"><div class="table-heading"><h3>Batches</h3></div><div class="table-scroll"><table><thead><tr><th>Batch</th><th>Class</th><th>Subject</th><th>Type</th><th>Status</th><th>Action</th></tr></thead><tbody id="batch-list"></tbody></table></div></div>
+        <div class="form-card"><h3>Assign teacher and enroll student</h3><div class="form-grid">
+          <div><label for="manage-batch">Select batch</label><select id="manage-batch"><option value="">Select batch</option></select></div>
+          <form id="batch-teacher-form"><label for="batch-teacher">Approved teacher</label><select id="batch-teacher" required><option value="">Select teacher</option></select><button class="btn btn-primary" type="submit">Assign teacher</button></form>
+          <form id="batch-student-form"><label for="batch-student">Approved student</label><select id="batch-student" required><option value="">Select student</option></select><button class="btn btn-primary" type="submit">Enroll student</button></form>
+        </div><p id="batch-assign-message" class="message"></p></div>
+      </section>
+      <section id="assignments-page" class="hidden">
+        <div class="section-heading page-title"><div><h2>Teacher assignments</h2><p class="muted">Assign approved teachers to classes and subjects.</p></div></div>
+        <div class="form-card"><form id="teacher-assignment-form" class="form-grid">
+          <div><label for="assignment-teacher">Teacher</label><select id="assignment-teacher" required><option value="">Select teacher</option></select></div>
+          <div><label for="assignment-class">Class</label><select id="assignment-class" required><option value="">Select class</option></select></div>
+          <div><label for="assignment-subject">Subject</label><select id="assignment-subject" required><option value="">Select subject</option></select></div>
+          <button class="btn btn-primary" type="submit">Assign teacher</button>
+        </form><p id="assignment-message" class="message"></p></div>
+        <div class="table-card"><div class="table-heading"><h3>Current assignments</h3></div><div class="table-scroll"><table><thead><tr><th>Teacher</th><th>Class</th><th>Subject</th><th>Action</th></tr></thead><tbody id="assignment-list"></tbody></table></div></div>
+      </section>
+      <section id="students-page" class="hidden">
+        <div class="section-heading page-title"><div><h2>Student management</h2><p class="muted">Invite students, approve access and manage status. Parent login accounts are not created.</p></div></div>
+        <div class="form-card"><form id="student-form" class="inline-form">
+          <div><label for="student-full-name">Student full name</label><input id="student-full-name" required maxlength="120" placeholder="Student name"></div>
+          <div><label for="student-email">Student email</label><input id="student-email" type="email" required placeholder="student@example.com"></div>
+          <button class="btn btn-primary" id="save-student-button" type="submit">+ Invite student</button>
+        </form><p id="student-message" class="message"></p></div>
+        <div class="table-card"><div class="table-heading"><h3>Students</h3><p class="muted">Pending students need Admin approval before signing in.</p></div><div class="table-scroll"><table><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Manage status</th></tr></thead><tbody id="student-list"></tbody></table></div></div>
       </section>
       <p id="dashboard-message" class="message"></p>
       <footer class="page-footer">DhyanshEdu · Dhyan Today. Math Better Tomorrow.</footer>
