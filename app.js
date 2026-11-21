@@ -288,7 +288,7 @@ function renderStudentAttempt(attempt) {
   const submit=document.createElement("button");submit.type="button";submit.id="student-submit-exam";submit.className="btn btn-primary";submit.textContent="Submit exam";
   panel.append(submit);
   const startedAt=new Date(attempt.started_at).getTime();
-  const durationEnd=startedAt+Number(attempt.duration_minutes)*60000;
+  const durationEnd=Math.min(startedAt+Number(attempt.duration_minutes)*60000,attempt.ends_at?new Date(attempt.ends_at).getTime():Infinity);
   const tick=()=>{
     const remaining=durationEnd-Date.now();
     timer.textContent="Time left: "+formatRemaining(remaining);
@@ -308,8 +308,8 @@ async function saveStudentAnswer(card) {
     await api(`/api/student/attempts/${encodeURIComponent(activeStudentAttempt.id)}/answers`,{
       method:"POST",body:JSON.stringify({exam_question_id:questionId,answer_text:textAnswer,selected_option_ids:inputs.map(x=>x.value)})
     });
-    status.textContent="Answer saved.";
-  }catch(error){status.textContent=error.message;}
+    status.textContent="Answer saved.";return true;
+  }catch(error){status.textContent=error.message;return false;}
   finally{button.disabled=false;}
 }
 
@@ -321,7 +321,8 @@ async function submitStudentExam(auto=false) {
   const buttons=Array.from(panel.querySelectorAll(".student-save-answer"));
   for(const button of buttons){
     const card=button.closest(".student-question");
-    await saveStudentAnswer(card);
+    const saved=await saveStudentAnswer(card);
+    if(!saved){const submit=$("#student-submit-exam");if(submit)submit.disabled=false;return;}
   }
   const submit=$("#student-submit-exam");if(submit)submit.disabled=true;
   try{
