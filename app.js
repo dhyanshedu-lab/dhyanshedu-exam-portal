@@ -191,6 +191,7 @@ function roleWorkspaceSection() {
           <div><label for="exam-end">End date/time (optional)</label><input id="exam-end" type="datetime-local"></div>
           <div class="full"><label for="exam-description">Instructions (optional)</label><textarea id="exam-description" rows="2" maxlength="4000"></textarea></div>
           <div class="full"><label for="exam-questions">Select questions (Ctrl/Cmd-click for multiple)</label><select id="exam-questions" multiple size="7" required></select><small class="muted">Questions must belong to your question bank and match the selected batch's subject/class.</small></div>
+          <div class="full"><label for="exam-paper-file">Question paper / supporting file (optional: PDF, DOCX or PPTX; max 12 MB)</label><input id="exam-paper-file" type="file" accept=".pdf,.docx,.pptx"><small class="muted">Students in this batch can download the attachment from their Exam Centre.</small></div>
           <div><button class="btn btn-primary" type="submit" id="save-exam-button">Create exam</button></div>
         </form><p id="exam-form-message" class="message"></p>
       </div>
@@ -303,6 +304,7 @@ async function loadStudentExams() {
        exam.result_visible?`${exam.marks_obtained} / ${exam.total_marks} (${exam.percentage}%)`:(exam.attempt_status==="submitted"?"Awaiting evaluation":"—")
       ].forEach(value=>{const cell=row.insertCell();cell.textContent=value??"—";});
       const action=row.insertCell();
+      (result.attachments||[]).filter(f=>f.exam_id===exam.id).forEach(f=>{const paperButton=document.createElement("button");paperButton.type="button";paperButton.className="btn btn-secondary btn-small";paperButton.textContent="Question paper";paperButton.addEventListener("click",()=>downloadPortalFile("/api/exams/"+encodeURIComponent(exam.id)+"/attachments/"+encodeURIComponent(f.id)+"/download",f.file_name).catch(err=>alert(err.message)));action.append(paperButton);});
       if(exam.result_visible && exam.attempt_id){
         const button=document.createElement("button");button.type="button";button.className="btn btn-primary btn-small";
         button.textContent="View result";button.addEventListener("click",()=>loadStudentResult(exam.attempt_id));
@@ -1362,8 +1364,10 @@ document.addEventListener("submit",async e=>{
       pass_marks:$("#exam-pass-marks").value===""?null:Number($("#exam-pass-marks").value),
       starts_at:start,ends_at:end,question_ids:questionIds
     })});
+    const paper=$("#exam-paper-file").files[0];
+    if(paper){const form=new FormData();form.append("file",paper);message.textContent="Exam created. Uploading question paper…";await apiForm("/api/teacher/exams/"+encodeURIComponent(result.exam_id)+"/attachments",form);}
     e.target.reset();$("#exam-duration").value="60";
-    message.textContent=`Exam created as ${result.status}. Total marks: ${result.total_marks}. Review it below and publish when ready.`;
+    message.textContent="Exam created as "+result.status+(paper?" with question paper attached":"")+". Total marks: "+result.total_marks+". Review it below and publish when ready.";
     await loadTeacherAuthoring();
   }catch(error){message.textContent=error.message;}
   finally{button.disabled=false;}
