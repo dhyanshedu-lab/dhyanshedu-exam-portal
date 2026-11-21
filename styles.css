@@ -64,3 +64,15 @@ textarea{resize:vertical;min-height:76px;line-height:1.5}
 .form-grid .full{grid-column:1/-1;width:100%;margin-top:0}
 .form-grid small{display:block;margin-top:7px;font-size:11px}
 .form-grid select[multiple]{min-height:150px}
+
+/* Student exam centre */
+.student-question{margin:16px 0;padding:22px}
+.student-question-inner{display:grid;gap:12px}
+.student-question h3{font-size:15px;margin:0}
+.student-question p{line-height:1.65;margin:0}
+.student-option{display:flex;gap:9px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font-size:13px;cursor:pointer}
+.student-option input{width:auto;margin-top:3px}
+.student-question textarea{width:100%;border:1px solid #dce2eb;border-radius:9px;padding:12px}
+.student-save-status{font-size:12px;margin:0}
+.exam-countdown{margin-left:auto;background:#fbf2d9;color:#7e5b08;border-radius:9px;padding:9px 13px;font-size:17px;font-variant-numeric:tabular-nums}
+#student-submit-exam{margin:14px 0 30px}
