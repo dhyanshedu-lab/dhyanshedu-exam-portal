@@ -1,4 +1,4 @@
-const ALLOWED_ORIGINS=["https://dhyanshedu-lab.github.io","https://dhyanshedu-exam-portal.dhyanshedu.workers.dev"];
+const ALLOWED_ORIGINS=["https://dhyanshedu-lab.github.io","https://dhyanshedu-exam-portal.dhyanshedu.workers.dev","https://dhyanshedu-exam-portal.pages.dev","https://dhyanshedu.com","https://www.dhyanshedu.com"];
 const json=(data,status,request)=>{const origin=request.headers.get("Origin")||"",headers={"Content-Type":"application/json","Cache-Control":"no-store","Vary":"Origin"};if(ALLOWED_ORIGINS.includes(origin))headers["Access-Control-Allow-Origin"]=origin;return new Response(JSON.stringify(data),{status,headers});};
 const fail=(message,status,request)=>json({error:message},status,request);
 const clean=(v,max=240)=>String(v??"").trim().slice(0,max);
@@ -38,8 +38,8 @@ export async function handleFeeRequest(request,env,user,account,path,method){
     if((scope==="curriculum"&&!b.curriculum_id)||(scope==="class"&&!b.class_id)||(scope==="subject"&&!b.subject_id)||(scope==="batch"&&!b.batch_id))return fail("Select the matching curriculum, class, subject or batch for this pricing scope.",400,request);
     const idValue=id();
     try{
-      await env.DB.prepare("INSERT INTO fee_plans(id,name,description,amount_paise,billing_frequency,is_active,pricing_scope,batch_type,curriculum_id,class_id,subject_id,batch_id,effective_from,effective_to,public_status,inclusions,terms,discount_type,discount_value) VALUES(?,?,?,?,?,1,?,?,?,?,?,?,?,?, 'draft',?,?,?,?)")
-        .bind(idValue,name,description,amount,frequency,scope,clean(b.batch_type,20)||null,clean(b.curriculum_id,80)||null,clean(b.class_id,80)||null,clean(b.subject_id,80)||null,clean(b.batch_id,80)||null,clean(b.effective_from,20)||null,clean(b.effective_to,20)||null,clean(b.inclusions,3000)||null,clean(b.terms,3000)||null,clean(b.discount_type,20)||null,b.discount_value==null||b.discount_value===""?null:Number(b.discount_value)).run();
+      await env.DB.prepare("INSERT INTO fee_plans(id,plan_name,name,description,amount_paise,billing_period,billing_frequency,is_active,pricing_scope,batch_type,curriculum_id,class_id,subject_id,batch_id,effective_from,effective_to,public_status,inclusions,terms,discount_type,discount_value) VALUES(?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?, 'draft',?,?,?,?)")
+        .bind(idValue,name,name,description,amount,frequency,frequency,scope,clean(b.batch_type,20)||null,clean(b.curriculum_id,80)||null,clean(b.class_id,80)||null,clean(b.subject_id,80)||null,clean(b.batch_id,80)||null,clean(b.effective_from,20)||null,clean(b.effective_to,20)||null,clean(b.inclusions,3000)||null,clean(b.terms,3000)||null,clean(b.discount_type,20)||null,b.discount_value==null||b.discount_value===""?null:Number(b.discount_value)).run();
       await audit(env,user.id,"fee_plan_created","fee_plan",idValue,{name,amount_paise:amount,pricing_scope:scope,public_status:"draft"}).run();
     }catch(e){return fail("Could not save fee plan. Check selected class, subject, batch and migration status. "+e.message,400,request);}
     return json({success:true,id:idValue,public_status:"draft"},201,request);
@@ -65,7 +65,7 @@ export async function handleFeeRequest(request,env,user,account,path,method){
     if(planId&&!await env.DB.prepare("SELECT id FROM fee_plans WHERE id=?").bind(planId).first())return fail("Fee plan not found.",404,request);
     let sum=0;for(let i=0;i<installments.length;i++){const x=installments[i],n=Number(x.amount_paise),date=clean(x.due_date,20);if(!money(n)||!/^\d{4}-\d{2}-\d{2}$/.test(date))return fail("Each installment needs a positive amount and due date.",400,request);sum+=n;}
     if(installments.length&&sum!==amount)return fail("Installment amounts must add up exactly to the agreed fee.",400,request);
-    const accountId=id(),statements=[env.DB.prepare("INSERT INTO student_fee_accounts(id,student_id,fee_plan_id,description,amount_due_paise,due_date,status,created_by,original_amount_paise,discount_paise,scholarship_paise,agreed_on,notes) VALUES(?,?,?,?,?,?, 'pending',?,?,?,?,datetime('now'),?)").bind(accountId,studentId,planId,description,amount,due,user.id,original,discount,scholarship,clean(b.notes,2000)||null)];
+    const accountId=id(),statements=[env.DB.prepare("INSERT INTO student_fee_accounts(id,student_id,fee_plan_id,total_amount_paise,description,amount_due_paise,due_date,status,created_by,original_amount_paise,discount_paise,scholarship_paise,agreed_on,notes) VALUES(?,?,?,?,?,?,?, 'pending',?,?,?,?,datetime('now'),?)").bind(accountId,studentId,planId,amount,description,amount,due,user.id,original,discount,scholarship,clean(b.notes,2000)||null)];
     installments.forEach((x,i)=>statements.push(env.DB.prepare("INSERT INTO fee_installments(id,fee_account_id,installment_number,description,amount_paise,due_date) VALUES(?,?,?,?,?,?)").bind(id(),accountId,i+1,clean(x.description,160)||("Installment "+(i+1)),Number(x.amount_paise),clean(x.due_date,20))));
     statements.push(audit(env,user.id,"student_fee_account_created","student_fee_account",accountId,{student_id:studentId,amount_due_paise:amount,discount_paise:discount,scholarship_paise:scholarship,installments:installments.length}));
     await env.DB.batch(statements);
@@ -80,8 +80,8 @@ export async function handleFeeRequest(request,env,user,account,path,method){
     if(amount>balance)return fail("Payment exceeds the outstanding balance.",409,request);
     const tx=id(),receipt=id().slice(0,8).toUpperCase(),receiptNumber="DHE-"+new Date().toISOString().slice(0,10).replace(/-/g,"")+"-"+receipt;
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO fee_transactions(id,fee_account_id,student_id,amount_paise,payment_method,transaction_reference,status,recorded_by,notes) VALUES(?,?,?,?,?,?,'recorded',?,?)").bind(tx,fa.id,fa.student_id,amount,methodName,clean(b.transaction_reference,120)||null,user.id,clean(b.notes,1000)||null),
-      env.DB.prepare("INSERT INTO fee_receipts(id,transaction_id,receipt_number) VALUES(?,?,?)").bind(id(),tx,receiptNumber),
+      env.DB.prepare("INSERT INTO fee_transactions(id,fee_account_id,student_id,amount_paise,payment_method,transaction_reference,payment_status,status,recorded_by,notes,received_at) VALUES(?,?,?,?,?,?,'paid','recorded',?,?,datetime('now'))").bind(tx,fa.id,fa.student_id,amount,methodName,clean(b.transaction_reference,120)||null,user.id,clean(b.notes,1000)||null),
+      env.DB.prepare("INSERT INTO fee_receipts(id,fee_transaction_id,transaction_id,receipt_number,issued_at) VALUES(?,?,?,?,datetime('now'))").bind(id(),tx,tx,receiptNumber),
       env.DB.prepare("UPDATE student_fee_accounts SET status=CASE WHEN ? >= amount_due_paise THEN 'paid' WHEN ? > 0 THEN 'partial' ELSE 'pending' END WHERE id=?").bind(totals.paid_paise+amount+totals.adjustment_credit_paise,totals.paid_paise+amount,fa.id),
       audit(env,user.id,"fee_payment_recorded","fee_transaction",tx,{fee_account_id:fa.id,amount_paise:amount,payment_method:methodName,receipt_number:receiptNumber})
     ]);

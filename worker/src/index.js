@@ -6,13 +6,7 @@ import { handleFeeRequest } from "./fees.js";
 // Reviewed syntax after removing pasted-document escaping; do not deploy without
 // environment binding review, API tests, and approval.
 
-const ALLOWED_ORIGINS = [
-
- "https\://dhyanshedu-lab.github.io",
-
- "https\://dhyanshedu-exam-portal.dhyanshedu.workers.dev"
-
-];
+const ALLOWED_ORIGINS = ["https://dhyanshedu-lab.github.io","https://dhyanshedu-exam-portal.dhyanshedu.workers.dev","https://dhyanshedu-exam-portal.pages.dev","https://dhyanshedu.com","https://www.dhyanshedu.com"];
 
 
 
@@ -180,6 +174,26 @@ export default {
 
 
 
+
+     // Preserve the existing public website enquiry submission route.
+     if (path === "/api/public/enquiries" && method === "POST") {
+       const origin = request.headers.get("Origin") || "";
+       if (!ALLOWED_ORIGINS.includes(origin)) return reply({error:"Origin not allowed"},403,request);
+       const b = await body(request);
+       const student = text(b.student_name,120), parent = text(b.parent_name,120);
+       const phone = text(b.phone,30), email = text(b.email,254).toLowerCase();
+       const studentClass = text(b.student_class,30), board = text(b.board,80);
+       if (!student || !phone || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !studentClass) {
+         return reply({error:"Please provide student name, phone, valid email and class."},400,request);
+       }
+       const digits = phone.replace(/\D/g,"").length;
+       if (digits < 7 || digits > 15) return reply({error:"Enter a valid phone number."},400,request);
+       const id = crypto.randomUUID();
+       await env.DB.prepare("INSERT INTO enquiries(id,student_name,parent_name,phone,email,student_class,board) VALUES(?,?,?,?,?,?,?)")
+         .bind(id,student,parent||null,phone,email,studentClass,board||null).run();
+       return reply({success:true,id,message:"Your enquiry has been received. Our team will contact you."},201,request);
+     }
+
      const user = await authUser(request,env);
 
      if (!user?.id) return reply({error:"Authentication required"},401,request);
@@ -206,6 +220,45 @@ export default {
        "SELECT id,role FROM users WHERE id=? AND status='approved' AND deleted_at IS NULL"
      ).bind(user.id).first();
      if (!account) return reply({error:"Account is pending approval or inactive"},403,request);
+
+
+     // Existing Admin enquiry inbox, assignment, follow-up and history APIs.
+     if (path === "/api/enquiries" && method === "GET" && account.role === "admin") {
+       const status = url.searchParams.get("status") || "";
+       if (!["","new","contacted","demo_scheduled","enrolled","closed"].includes(status)) return reply({error:"Invalid status"},400,request);
+       const sql = "SELECT e.*,u.full_name assigned_name FROM enquiries e LEFT JOIN users u ON u.id=e.assigned_to " +
+         (status ? "WHERE e.status=? " : "") + "ORDER BY e.created_at DESC LIMIT 500";
+       const q = status ? await env.DB.prepare(sql).bind(status).all() : await env.DB.prepare(sql).all();
+       return reply({success:true,enquiries:q.results||[]},200,request);
+     }
+
+     let enquiryMatch = path.match(/^\/api\/enquiries\/([0-9a-f-]+)$/i);
+     if (enquiryMatch && method === "PATCH" && account.role === "admin") {
+       const id = enquiryMatch[1], b = await body(request);
+       const old = await env.DB.prepare("SELECT id,status,assigned_to,follow_up_at,admin_notes FROM enquiries WHERE id=?").bind(id).first();
+       if (!old) return reply({error:"Enquiry not found"},404,request);
+       const status = b.status === undefined ? old.status : text(b.status,30);
+       if (!["new","contacted","demo_scheduled","enrolled","closed"].includes(status)) return reply({error:"Invalid status"},400,request);
+       const assigned = b.assigned_to === undefined ? old.assigned_to : (text(b.assigned_to,64)||null);
+       if (assigned && !await env.DB.prepare("SELECT id FROM users WHERE id=? AND role IN ('admin','teacher') AND status='approved' AND deleted_at IS NULL").bind(assigned).first()) {
+         return reply({error:"Invalid follow-up owner"},400,request);
+       }
+       const follow = b.follow_up_at === undefined ? old.follow_up_at : (text(b.follow_up_at,40)||null);
+       if (follow && !/^\d{4}-\d{2}-\d{2}$/.test(follow)) return reply({error:"Invalid follow-up date"},400,request);
+       const notes = b.admin_notes === undefined ? old.admin_notes : text(b.admin_notes,2000);
+       const changes = [["status",old.status,status],["assigned_to",old.assigned_to,assigned],["follow_up_at",old.follow_up_at,follow],["admin_notes",old.admin_notes,notes]];
+       const statements = [env.DB.prepare("UPDATE enquiries SET status=?,assigned_to=?,follow_up_at=?,admin_notes=?,updated_at=datetime('now') WHERE id=?").bind(status,assigned,follow,notes,id)];
+       for (const [field,before,after] of changes) {
+         if ((before ?? null) !== (after ?? null)) statements.push(env.DB.prepare("INSERT INTO enquiry_history(id,enquiry_id,actor_id,action,old_value,new_value) VALUES(?,?,?,?,?,?)").bind(crypto.randomUUID(),id,user.id,field,before==null?null:String(before),after==null?null:String(after)));
+       }
+       await env.DB.batch(statements);
+       return reply({success:true},200,request);
+     }
+     enquiryMatch = path.match(/^\/api\/enquiries\/([0-9a-f-]+)\/history$/i);
+     if (enquiryMatch && method === "GET" && account.role === "admin") {
+       const q = await env.DB.prepare("SELECT h.*,u.full_name actor_name FROM enquiry_history h LEFT JOIN users u ON u.id=h.actor_id WHERE h.enquiry_id=? ORDER BY h.created_at DESC").bind(enquiryMatch[1]).all();
+       return reply({success:true,history:q.results||[]},200,request);
+     }
 
      const feeResponse = await handleFeeRequest(request,env,user,account,path,method);
      if (feeResponse) return feeResponse;
