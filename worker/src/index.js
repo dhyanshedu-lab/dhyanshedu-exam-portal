@@ -6,13 +6,7 @@ import { handleFeeRequest } from "./fees.js";
 // Reviewed syntax after removing pasted-document escaping; do not deploy without
 // environment binding review, API tests, and approval.
 
-const ALLOWED_ORIGINS = [
-
- "https\://dhyanshedu-lab.github.io",
-
- "https\://dhyanshedu-exam-portal.dhyanshedu.workers.dev"
-
-];
+const ALLOWED_ORIGINS = ["https://dhyanshedu-lab.github.io","https://dhyanshedu-exam-portal.dhyanshedu.workers.dev","https://dhyanshedu-exam-portal.pages.dev","https://dhyanshedu.com","https://www.dhyanshedu.com"];
 
 
 
