@@ -41,6 +41,22 @@ export async function handleStudyRequest(request,env,user,account,path,method){
       : student?await env.DB.prepare("SELECT aa.r2_object_key,aa.file_name,aa.mime_type FROM assignment_attachments aa JOIN assignments a ON a.id=aa.assignment_id JOIN batch_students bs ON bs.batch_id=a.batch_id AND bs.student_id=? AND bs.status='active' WHERE aa.id=? AND a.id=? AND a.status='published'").bind(user.id,attach[2],attach[1]).first():null;
     return download(env,request,row);
   }
+  const examUpload=path.match(/^\/api\/teacher\/exams\/([0-9a-f-]+)\/attachments$/i);
+  if(examUpload&&method==="POST"&&teacher){
+    let up;try{
+      const exam=await env.DB.prepare("SELECT id FROM exams WHERE id=? AND (created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=exams.batch_id AND bt.teacher_id=?))").bind(examUpload[1],user.id,user.id).first();
+      if(!exam)return fail("Exam not found or access denied.",404,request);
+      up=await upload(request,env);
+      if(!["application/pdf","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.presentationml.presentation"].includes(up.mime))throw new Error("Question paper must be PDF, DOCX or PPTX.");
+      const id=crypto.randomUUID();await env.DB.prepare("INSERT INTO exam_attachments(id,exam_id,uploaded_by,r2_object_key,file_name,mime_type,file_size_bytes) VALUES(?,?,?,?,?,?,?)").bind(id,exam.id,user.id,up.key,up.name,up.mime,up.size).run();
+      return json({success:true,id,file_name:up.name},201,request);
+    }catch(e){if(up?.key)await env.STUDY_FILES_BUCKET?.delete(up.key);return fail(e.message,400,request);}
+  }
+  const examDownload=path.match(/^\/api\/exams\/([0-9a-f-]+)\/attachments\/([0-9a-f-]+)\/download$/i);
+  if(examDownload&&method==="GET"){
+    const row=teacher?await env.DB.prepare("SELECT ea.r2_object_key,ea.file_name,ea.mime_type FROM exam_attachments ea JOIN exams e ON e.id=ea.exam_id WHERE ea.exam_id=? AND ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?))").bind(examDownload[1],examDownload[2],user.id,user.id).first():student?await env.DB.prepare("SELECT ea.r2_object_key,ea.file_name,ea.mime_type FROM exam_attachments ea JOIN exams e ON e.id=ea.exam_id JOIN batch_students bs ON bs.batch_id=e.batch_id AND bs.student_id=? AND bs.status='active' WHERE ea.exam_id=? AND ea.id=? AND e.status IN ('scheduled','published','closed')").bind(user.id,examDownload[1],examDownload[2]).first():null;
+    return download(env,request,row);
+  }
   if(path==="/api/teacher/materials"&&method==="POST"&&teacher){
     let up;try{up=await upload(request,env);const title=txt(up.form.get("title"),180),description=txt(up.form.get("description"),2000)||null,bid=txt(up.form.get("batch_id"),80);
       const b=await env.DB.prepare("SELECT b.id,b.class_id,b.subject_id FROM batches b JOIN batch_teachers bt ON bt.batch_id=b.id WHERE b.id=? AND bt.teacher_id=? AND b.status='active'").bind(bid,user.id).first();
