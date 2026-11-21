@@ -259,6 +259,126 @@ export default {
        }
      }
 
+     // Student exam centre. Correct answers are never returned by read endpoints.
+     if (account.role === "student") {
+       if (path === "/api/student/exams" && method === "GET") {
+         const rows=await env.DB.prepare(
+           "SELECT e.id,e.title,e.description,e.duration_minutes,e.total_marks,e.pass_marks,e.starts_at,e.ends_at,e.status,e.show_results_immediately,b.batch_name,ea.id attempt_id,ea.status attempt_status,ea.started_at,ea.submitted_at,r.marks_obtained,r.percentage,r.published_at FROM exams e JOIN batches b ON b.id=e.batch_id JOIN batch_students bs ON bs.batch_id=b.id AND bs.student_id=? AND bs.status='active' LEFT JOIN exam_attempts ea ON ea.exam_id=e.id AND ea.student_id=? LEFT JOIN results r ON r.attempt_id=ea.id WHERE e.status IN ('scheduled','published','closed') AND b.status='active' ORDER BY COALESCE(e.starts_at,e.created_at) DESC"
+         ).bind(user.id,user.id).all();
+         const now=Date.now();
+         const exams=(rows.results||[]).map(e=>({
+           ...e,
+           availability: e.attempt_id ? e.attempt_status : (
+             e.status==="closed" || (e.ends_at && new Date(e.ends_at).getTime()<now) ? "closed" :
+             (e.starts_at && new Date(e.starts_at).getTime()>now ? "upcoming" : "available")
+           ),
+           result_visible: !!e.published_at
+         }));
+         return reply({success:true,exams},200,request);
+       }
+
+       const startMatch=path.match(/^\/api\/student\/exams\/([0-9a-f-]+)\/start$/i);
+       if(startMatch && method==="POST"){
+         const exam=await env.DB.prepare(
+           "SELECT e.id,e.status,e.starts_at,e.ends_at,e.duration_minutes,b.id batch_id FROM exams e JOIN batches b ON b.id=e.batch_id JOIN batch_students bs ON bs.batch_id=b.id AND bs.student_id=? AND bs.status='active' WHERE e.id=? AND b.status='active'"
+         ).bind(user.id,startMatch[1]).first();
+         if(!exam) return reply({error:"Exam not found or you are not enrolled in its batch."},404,request);
+         const now=Date.now();
+         if(!["published","scheduled"].includes(exam.status) || (exam.starts_at && new Date(exam.starts_at).getTime()>now) || (exam.ends_at && new Date(exam.ends_at).getTime()<now)) return reply({error:"This exam is not open for attempts right now."},409,request);
+         let attempt=await env.DB.prepare("SELECT id,status,started_at,submitted_at FROM exam_attempts WHERE exam_id=? AND student_id=?").bind(exam.id,user.id).first();
+         if(attempt && attempt.status!=="in_progress") return reply({error:"You have already submitted this exam. Only one attempt is allowed."},409,request);
+         if(!attempt){
+           const id=crypto.randomUUID();
+           await env.DB.prepare("INSERT INTO exam_attempts(id,exam_id,student_id,status) VALUES(?,?,?,'in_progress')").bind(id,exam.id,user.id).run();
+           attempt={id,status:"in_progress",started_at:new Date().toISOString(),submitted_at:null};
+         }
+         const questions=await env.DB.prepare(
+           "SELECT eq.id exam_question_id,eq.marks,eq.negative_marks,eq.sort_order,q.question_type,q.question_text,q.topic FROM exam_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.sort_order"
+         ).bind(exam.id).all();
+         const options=await env.DB.prepare(
+           "SELECT qo.id,qo.question_id,qo.option_label,qo.option_text,eq.id exam_question_id FROM exam_questions eq JOIN question_options qo ON qo.question_id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.sort_order,qo.sort_order"
+         ).bind(exam.id).all();
+         const answers=await env.DB.prepare("SELECT exam_question_id,answer_text,selected_option_ids FROM student_answers WHERE attempt_id=?").bind(attempt.id).all();
+         const answerMap=new Map((answers.results||[]).map(x=>[x.exam_question_id,x]));
+         return reply({success:true,attempt:{...attempt,duration_minutes:exam.duration_minutes,questions:(questions.results||[]).map(q=>({
+           ...q,options:(options.results||[]).filter(o=>o.exam_question_id===q.exam_question_id).map(o=>({id:o.id,label:o.option_label,text:o.option_text})),
+           answer:answerMap.get(q.exam_question_id)?.answer_text||"",
+           selected_option_ids:JSON.parse(answerMap.get(q.exam_question_id)?.selected_option_ids||"[]")
+         }))}},200,request);
+       }
+
+       const attemptMatch=path.match(/^\/api\/student\/attempts\/([0-9a-f-]+)$/i);
+       if(attemptMatch && method==="GET"){
+         const attempt=await env.DB.prepare("SELECT ea.id,ea.status,ea.started_at,ea.submitted_at,e.id exam_id,e.title,e.duration_minutes,e.ends_at FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id WHERE ea.id=? AND ea.student_id=?").bind(attemptMatch[1],user.id).first();
+         if(!attempt) return reply({error:"Attempt not found."},404,request);
+         const questions=await env.DB.prepare("SELECT eq.id exam_question_id,eq.marks,eq.sort_order,q.question_type,q.question_text,q.topic FROM exam_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.sort_order").bind(attempt.exam_id).all();
+         const options=await env.DB.prepare("SELECT qo.id,qo.option_label,qo.option_text,eq.id exam_question_id FROM exam_questions eq JOIN question_options qo ON qo.question_id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.sort_order,qo.sort_order").bind(attempt.exam_id).all();
+         const answers=await env.DB.prepare("SELECT exam_question_id,answer_text,selected_option_ids FROM student_answers WHERE attempt_id=?").bind(attempt.id).all();
+         const answerMap=new Map((answers.results||[]).map(x=>[x.exam_question_id,x]));
+         return reply({success:true,attempt:{...attempt,questions:(questions.results||[]).map(q=>({ ...q,options:(options.results||[]).filter(o=>o.exam_question_id===q.exam_question_id).map(o=>({id:o.id,label:o.option_label,text:o.option_text})),answer:answerMap.get(q.exam_question_id)?.answer_text||"",selected_option_ids:JSON.parse(answerMap.get(q.exam_question_id)?.selected_option_ids||"[]")}))}},200,request);
+       }
+
+       const answerMatch=path.match(/^\/api\/student\/attempts\/([0-9a-f-]+)\/answers$/i);
+       if(answerMatch && method==="POST"){
+         const b=await body(request), attemptId=answerMatch[1];
+         const attempt=await env.DB.prepare("SELECT ea.id,ea.status,ea.started_at,e.duration_minutes,e.ends_at FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id JOIN batches bt ON bt.id=e.batch_id JOIN batch_students bs ON bs.batch_id=bt.id AND bs.student_id=? AND bs.status='active' WHERE ea.id=? AND ea.student_id=?").bind(user.id,attemptId,user.id).first();
+         if(!attempt) return reply({error:"Attempt not found."},404,request);
+         if(attempt.status!=="in_progress") return reply({error:"This attempt is already submitted."},409,request);
+         const deadline=Math.min(new Date(attempt.started_at).getTime()+Number(attempt.duration_minutes)*60000,attempt.ends_at?new Date(attempt.ends_at).getTime():Infinity);
+         if(Date.now()>deadline) return reply({error:"The exam time has ended. Submit your attempt now."},409,request);
+         const examQuestionId=text(b.exam_question_id,64), answerText=text(b.answer_text,8000);
+         const selected=Array.isArray(b.selected_option_ids)?[...new Set(b.selected_option_ids.map(x=>text(x,64)))]:[];
+         const eq=await env.DB.prepare("SELECT eq.id FROM exam_questions eq JOIN exam_attempts ea ON ea.exam_id=eq.exam_id WHERE eq.id=? AND ea.id=?").bind(examQuestionId,attemptId).first();
+         if(!eq) return reply({error:"Question does not belong to this exam."},400,request);
+         if(selected.length){
+           const placeholders=selected.map(()=>"?").join(",");
+           const valid=await env.DB.prepare("SELECT COUNT(*) total FROM question_options qo JOIN exam_questions eq ON eq.question_id=qo.question_id WHERE eq.id=? AND qo.id IN ("+placeholders+")").bind(examQuestionId,...selected).first();
+           if(Number(valid?.total)!==selected.length) return reply({error:"One or more selected options are invalid."},400,request);
+         }
+         await env.DB.prepare("INSERT INTO student_answers(id,attempt_id,exam_question_id,answer_text,selected_option_ids,answered_at) VALUES(?,?,?,?,?,datetime('now')) ON CONFLICT(attempt_id,exam_question_id) DO UPDATE SET answer_text=excluded.answer_text,selected_option_ids=excluded.selected_option_ids,answered_at=excluded.answered_at").bind(crypto.randomUUID(),attemptId,examQuestionId,answerText||null,JSON.stringify(selected)).run();
+         return reply({success:true,saved:true},200,request);
+       }
+
+       const submitMatch=path.match(/^\/api\/student\/attempts\/([0-9a-f-]+)\/submit$/i);
+       if(submitMatch && method==="POST"){
+         const attemptId=submitMatch[1];
+         const attempt=await env.DB.prepare("SELECT ea.id,ea.exam_id,ea.status,ea.started_at,e.duration_minutes,e.ends_at,e.total_marks,e.show_results_immediately FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id JOIN batches b ON b.id=e.batch_id JOIN batch_students bs ON bs.batch_id=b.id AND bs.student_id=? AND bs.status='active' WHERE ea.id=? AND ea.student_id=?").bind(user.id,attemptId,user.id).first();
+         if(!attempt) return reply({error:"Attempt not found."},404,request);
+         if(attempt.status!=="in_progress") return reply({error:"This attempt has already been submitted."},409,request);
+         const qs=await env.DB.prepare("SELECT eq.id,eq.marks,eq.negative_marks,q.question_type,q.question_text FROM exam_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.exam_id=?").bind(attempt.exam_id).all();
+         const answers=await env.DB.prepare("SELECT exam_question_id,answer_text,selected_option_ids FROM student_answers WHERE attempt_id=?").bind(attemptId).all();
+         const answerMap=new Map((answers.results||[]).map(x=>[x.exam_question_id,x]));
+         let score=0,manual=0;
+         for(const q of qs.results||[]){
+           const ans=answerMap.get(q.id);
+           if(["short_answer","long_answer"].includes(q.question_type)){manual++;continue;}
+           let correct=false;
+           if(q.question_type==="mcq"||q.question_type==="multiple_select"){
+             const chosen=new Set(JSON.parse(ans?.selected_option_ids||"[]"));
+             const rightRows=await env.DB.prepare("SELECT id FROM question_options WHERE question_id=(SELECT question_id FROM exam_questions WHERE id=?) AND is_correct=1").bind(q.id).all();
+             const right=new Set((rightRows.results||[]).map(x=>x.id));
+             correct=chosen.size===right.size && [...chosen].every(id=>right.has(id));
+           } else if(q.question_type==="numerical" && ans?.answer_text?.trim()!==""){
+             const key=await env.DB.prepare("SELECT explanation FROM questions WHERE id=(SELECT question_id FROM exam_questions WHERE id=?)").bind(q.id).first();
+             const expected=Number(key?.explanation), actual=Number(ans.answer_text);
+             correct=Number.isFinite(expected)&&Number.isFinite(actual)&&Math.abs(expected-actual)<1e-8;
+           }
+           const awarded=correct?Number(q.marks): (ans && (q.question_type==="mcq"||q.question_type==="multiple_select") ? -Number(q.negative_marks||0) : 0);
+           score+=awarded;
+           await env.DB.prepare("UPDATE student_answers SET is_correct=?,marks_awarded=? WHERE attempt_id=? AND exam_question_id=?").bind(correct?1:0,awarded,attemptId,q.id).run();
+         }
+         score=Math.max(0,score);
+         const total=Number(attempt.total_marks||0), percentage=total>0?Math.round(score/total*10000)/100:0;
+         const nextStatus=manual>0?"submitted":"evaluated";
+         const publishedAt=manual===0 && Number(attempt.show_results_immediately)===1 ? new Date().toISOString() : null;
+         await env.DB.batch([
+           env.DB.prepare("UPDATE exam_attempts SET status=?,submitted_at=datetime('now'),score=? WHERE id=? AND student_id=?").bind(nextStatus,score,attemptId,user.id),
+           env.DB.prepare("INSERT INTO results(id,attempt_id,student_id,exam_id,total_marks,marks_obtained,percentage,published_at) VALUES(?,?,?,?,?,?,?,?)").bind(crypto.randomUUID(),attemptId,user.id,attempt.exam_id,total,score,percentage,publishedAt)
+         ]);
+         return reply({success:true,status:nextStatus,marks_obtained:score,total_marks:total,manual_review_required:manual>0,result_published:!!publishedAt},200,request);
+       }
+     }
+
      // Teacher question bank and batch exam authoring. These routes run before the Admin-only gate.
      if (account.role === "teacher") {
        if (path === "/api/teacher/questions" && method === "GET") {
