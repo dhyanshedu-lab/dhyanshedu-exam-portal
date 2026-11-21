@@ -156,6 +156,14 @@ function roleWorkspaceSection() {
       </div>
       <div class="table-card"><div class="table-heading"><h3>My exams</h3></div><div class="table-scroll"><table><thead><tr><th>Exam</th><th>Batch</th><th>Questions</th><th>Total marks</th><th>Schedule</th><th>Status</th><th>Action</th></tr></thead><tbody id="teacher-exam-list"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div>`;
     section.append(authoring);
+  } else if (profile?.role === "student") {
+    const exams = document.createElement("div");
+    exams.id = "student-exam-centre";
+    exams.innerHTML = `
+      <div class="section-heading lower"><div><h2>Exam Centre</h2><p class="muted">View available exams, continue an attempt and check published results.</p></div></div>
+      <div id="student-exam-list" class="table-card"><div class="table-heading"><h3>My exams</h3></div><div class="table-scroll"><table><thead><tr><th>Exam</th><th>Batch</th><th>Schedule</th><th>Duration</th><th>Status</th><th>Result</th><th>Action</th></tr></thead><tbody id="student-exams-body"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div>
+      <div id="student-attempt-panel" class="hidden"></div>`;
+    section.append(exams);
   }
   return section;
 }
@@ -193,6 +201,141 @@ function safeMeetingLink(raw) {
   } catch {
     return "—";
   }
+}
+
+let activeStudentAttempt = null;
+let studentExamTimer = null;
+
+function stopStudentExamTimer() {
+  if(studentExamTimer) clearInterval(studentExamTimer);
+  studentExamTimer=null;
+}
+
+function formatRemaining(ms) {
+  const seconds=Math.max(0,Math.floor(ms/1000));
+  return `${String(Math.floor(seconds/60)).padStart(2,"0")}:${String(seconds%60).padStart(2,"0")}`;
+}
+
+async function loadStudentExams() {
+  const body=$("#student-exams-body");
+  if(!body)return;
+  body.innerHTML='<tr><td colspan="7">Loading…</td></tr>';
+  try{
+    const result=await api("/api/student/exams");
+    body.replaceChildren();
+    const exams=result.exams||[];
+    if(!exams.length){const row=body.insertRow();const cell=row.insertCell();cell.colSpan=7;cell.textContent="No exams have been assigned to your batches yet.";return;}
+    exams.forEach(exam=>{
+      const row=body.insertRow();
+      [exam.title,exam.batch_name,exam.starts_at?new Date(exam.starts_at).toLocaleString():"Available when published",exam.duration_minutes+" min",exam.availability,
+       exam.result_visible?`${exam.marks_obtained} / ${exam.total_marks} (${exam.percentage}%)`:(exam.attempt_status==="submitted"?"Awaiting evaluation":"—")
+      ].forEach(value=>{const cell=row.insertCell();cell.textContent=value??"—";});
+      const action=row.insertCell();
+      if(exam.availability==="available"||exam.availability==="in_progress"){
+        const button=document.createElement("button");button.type="button";button.className="btn btn-primary btn-small";
+        button.textContent=exam.availability==="in_progress"?"Continue":"Start exam";
+        button.addEventListener("click",()=>startStudentExam(exam.id));
+        action.append(button);
+      }else action.textContent=exam.availability==="upcoming"?"Not open yet":exam.availability==="evaluated"?"Submitted":"—";
+    });
+  }catch(error){body.replaceChildren();const row=body.insertRow();const cell=row.insertCell();cell.colSpan=7;cell.textContent=error.message;}
+}
+
+async function startStudentExam(examId) {
+  try{
+    const started=await api(`/api/student/exams/${encodeURIComponent(examId)}/start`,{method:"POST"});
+    activeStudentAttempt=started.attempt;
+    renderStudentAttempt(activeStudentAttempt);
+  }catch(error){alert(error.message);}
+}
+
+function renderStudentAttempt(attempt) {
+  stopStudentExamTimer();
+  const panel=$("#student-attempt-panel");
+  panel.classList.remove("hidden");
+  panel.replaceChildren();
+  const heading=document.createElement("div");heading.className="section-heading lower";
+  const title=document.createElement("h2");title.textContent=attempt.title||"Exam in progress";
+  const timer=document.createElement("strong");timer.id="student-exam-countdown";timer.className="exam-countdown";
+  heading.append(title,timer);panel.append(heading);
+  const info=document.createElement("p");info.className="muted";info.textContent="Your answers are saved when you select Save answer. Submit when you have finished.";panel.append(info);
+  (attempt.questions||[]).forEach((q,index)=>{
+    const card=document.createElement("article");card.className="table-card student-question";
+    card.dataset.questionId=q.exam_question_id;
+    const inner=document.createElement("div");inner.className="student-question-inner";
+    const h=document.createElement("h3");h.textContent=`Question ${index+1} · ${q.marks} marks`;
+    const prompt=document.createElement("p");prompt.textContent=q.question_text;
+    inner.append(h,prompt);
+    if(["mcq","multiple_select"].includes(q.question_type)){
+      (q.options||[]).forEach(option=>{
+        const label=document.createElement("label");label.className="student-option";
+        const input=document.createElement("input");input.type=q.question_type==="mcq"?"radio":"checkbox";
+        input.name="answer-"+q.exam_question_id;input.value=option.id;
+        input.checked=(q.selected_option_ids||[]).includes(option.id);
+        label.append(input,document.createTextNode(` ${option.label}. ${option.text}`));inner.append(label);
+      });
+    }else{
+      const answer=document.createElement("textarea");answer.className="student-answer-text";answer.rows=3;answer.maxLength=8000;answer.placeholder=q.question_type==="numerical"?"Enter your numerical answer":"Write your answer";answer.value=q.answer||"";
+      inner.append(answer);
+      if(["short_answer","long_answer","numerical"].includes(q.question_type)){
+        const note=document.createElement("small");note.className="muted";note.textContent="This answer will be reviewed by your teacher.";inner.append(note);
+      }
+    }
+    const status=document.createElement("p");status.className="student-save-status muted";status.textContent=q.answer||(q.selected_option_ids||[]).length?"Saved answer available":"Not saved yet";
+    const save=document.createElement("button");save.type="button";save.className="btn btn-primary btn-small student-save-answer";save.textContent="Save answer";
+    inner.append(save,status);card.append(inner);panel.append(card);
+  });
+  const submit=document.createElement("button");submit.type="button";submit.id="student-submit-exam";submit.className="btn btn-primary";submit.textContent="Submit exam";
+  panel.append(submit);
+  const startedAt=new Date(attempt.started_at).getTime();
+  const durationEnd=startedAt+Number(attempt.duration_minutes)*60000;
+  const tick=()=>{
+    const remaining=durationEnd-Date.now();
+    timer.textContent="Time left: "+formatRemaining(remaining);
+    if(remaining<=0){stopStudentExamTimer();submitStudentExam(true);}
+  };
+  tick();studentExamTimer=setInterval(tick,1000);
+  panel.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+async function saveStudentAnswer(card) {
+  const questionId=card.dataset.questionId;
+  const inputs=Array.from(card.querySelectorAll('input[type="radio"]:checked,input[type="checkbox"]:checked'));
+  const textAnswer=card.querySelector(".student-answer-text")?.value||"";
+  const button=card.querySelector(".student-save-answer"),status=card.querySelector(".student-save-status");
+  button.disabled=true;status.textContent="Saving…";
+  try{
+    await api(`/api/student/attempts/${encodeURIComponent(activeStudentAttempt.id)}/answers`,{
+      method:"POST",body:JSON.stringify({exam_question_id:questionId,answer_text:textAnswer,selected_option_ids:inputs.map(x=>x.value)})
+    });
+    status.textContent="Answer saved.";
+  }catch(error){status.textContent=error.message;}
+  finally{button.disabled=false;}
+}
+
+async function submitStudentExam(auto=false) {
+  if(!activeStudentAttempt)return;
+  const panel=$("#student-attempt-panel");
+  if(!auto && !confirm("Submit your exam now? You cannot change answers after submission."))return;
+  stopStudentExamTimer();
+  const buttons=Array.from(panel.querySelectorAll(".student-save-answer"));
+  for(const button of buttons){
+    const card=button.closest(".student-question");
+    await saveStudentAnswer(card);
+  }
+  const submit=$("#student-submit-exam");if(submit)submit.disabled=true;
+  try{
+    const result=await api(`/api/student/attempts/${encodeURIComponent(activeStudentAttempt.id)}/submit`,{method:"POST"});
+    panel.replaceChildren();
+    const message=document.createElement("div");message.className="table-card table-heading";
+    const heading=document.createElement("h2");heading.textContent="Exam submitted";
+    const details=document.createElement("p");details.textContent=result.manual_review_required
+      ?"Your objective answers were scored. Numerical and written answers are waiting for teacher evaluation."
+      :result.result_published?`Your score: ${result.marks_obtained} / ${result.total_marks}`:"Your answers were submitted. Results will be shown when published.";
+    message.append(heading,details);panel.append(message);
+    activeStudentAttempt=null;
+    await loadStudentExams();
+  }catch(error){alert(error.message);if(submit)submit.disabled=false;}
 }
 
 let teacherWorkspaceBatches = [];
@@ -314,6 +457,8 @@ async function loadRoleWorkspace(role) {
       });
       $("#exam-batch").addEventListener("change",refreshExamQuestionOptions);
       await loadTeacherAuthoring();
+    } else if (role === "student") {
+      await loadStudentExams();
     }
   } catch (error) {
     const message = document.createElement("p");
@@ -736,6 +881,12 @@ async function loadAdminPage(name) {
     if (name==="teachers") await loadTeachers();
   } catch(error) { $("#dashboard-message").textContent=error.message; }
 }
+
+document.addEventListener("click",async e=>{
+  const save=e.target.closest(".student-save-answer");
+  if(save){const card=save.closest(".student-question");if(card)await saveStudentAnswer(card);return;}
+  if(e.target.id==="student-submit-exam"){await submitStudentExam(false);}
+});
 
 document.addEventListener("submit",async e=>{
   if(e.target.id!=="teacher-question-form") return;
