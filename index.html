@@ -42,6 +42,7 @@
           <button type="button" class="show-password" id="toggle-password">Show</button>
         </div>
         <button class="btn btn-primary full" id="login-button" type="submit">Sign in <span>→</span></button>
+        <div class="forgot-row"><a href="#forgot-password" id="forgot-link">Forgot password?</a></div>
         <p id="login-message" class="message" role="status"></p>
       </form>
       <div class="login-foot"><a href="https://dhyanshedu.com">← Back to DhyanshEdu website</a></div>
@@ -95,6 +96,61 @@
       <p class="muted">Your account setup is complete. The DhyanshEdu administrator must approve your account before you can access the teacher workspace.</p>
       <p id="pending-message" class="message" role="status">Please sign in after the administrator confirms your approval.</p>
       <button id="pending-login-button" class="btn btn-primary full" type="button">Return to sign in</button>
+    </div>
+  </div>
+</section>
+
+<section id="forgot-view" class="login-shell hidden">
+  <div class="login-brand">
+    <a class="brand" href="https://dhyanshedu.com"><span class="brand-mark">D</span><span>Dhyansh<span class="gold">Edu</span></span></a>
+    <div class="login-copy">
+      <p class="eyebrow">ACCOUNT RECOVERY</p>
+      <h1>Get back to<br><span>your learning journey.</span></h1>
+      <p class="muted">We'll email you a secure link to reset your password.</p>
+    </div>
+    <p class="copyright">© <span id="forgot-year"></span> DhyanshEdu</p>
+  </div>
+  <div class="login-panel">
+    <div class="login-card">
+      <div class="mobile-brand brand"><span class="brand-mark">D</span><span>Dhyansh<span class="gold">Edu</span></span></div>
+      <p class="eyebrow">PASSWORD RECOVERY</p>
+      <h2>Forgot password?</h2>
+      <p class="muted">Enter the email address registered with your account.</p>
+      <form id="forgot-form">
+        <label for="forgot-email">Email address</label>
+        <input id="forgot-email" type="email" autocomplete="username" placeholder="you@example.com" required>
+        <button class="btn btn-primary full" id="forgot-button" type="submit">Send reset link</button>
+        <p id="forgot-message" class="message" role="status" aria-live="polite"></p>
+        <button id="forgot-back-button" class="text-button" type="button">← Back to sign in</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<section id="reset-view" class="login-shell hidden">
+  <div class="login-brand">
+    <a class="brand" href="https://dhyanshedu.com"><span class="brand-mark">D</span><span>Dhyansh<span class="gold">Edu</span></span></a>
+    <div class="login-copy">
+      <p class="eyebrow">SECURE ACCOUNT RECOVERY</p>
+      <h1>Choose a new<br><span>password.</span></h1>
+      <p class="muted">Use a strong password that you have not used before.</p>
+    </div>
+    <p class="copyright">© <span id="reset-year"></span> DhyanshEdu</p>
+  </div>
+  <div class="login-panel">
+    <div class="login-card">
+      <div class="mobile-brand brand"><span class="brand-mark">D</span><span>Dhyansh<span class="gold">Edu</span></span></div>
+      <p class="eyebrow">PASSWORD RECOVERY</p>
+      <h2>Set a new password</h2>
+      <p class="muted">Your new password must contain at least 8 characters.</p>
+      <form id="reset-form">
+        <label for="reset-password">New password</label>
+        <input id="reset-password" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters" required>
+        <label for="reset-password-confirm">Confirm new password</label>
+        <input id="reset-password-confirm" type="password" autocomplete="new-password" minlength="8" placeholder="Enter password again" required>
+        <button class="btn btn-primary full" id="reset-button" type="submit">Update password</button>
+        <p id="reset-message" class="message" role="status" aria-live="polite"></p>
+      </form>
     </div>
   </div>
 </section>

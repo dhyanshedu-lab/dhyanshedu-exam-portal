@@ -1,65 +1,75 @@
-# DhyanshEdu Exam Portal — starter build
+# DhyanshEdu Exam Portal
 
-This is a separate application intended for `exam.dhyanshedu.com`. It does not replace the existing public `dhyanshedu.com` website.
+This repository contains the separate exam portal frontend. It does not replace the existing public `dhyanshedu.com` website.
 
-## Included in this first build
-- Responsive DhyanshEdu-branded login page.
+## Current frontend functionality
+
 - Supabase email/password sign-in.
-- Reads the signed-in user's `profiles` row and checks `approval_status`.
-- Role-aware welcome heading for admin, teacher and student.
-- Initial dashboard counts for teachers, students, exams and attempts.
-- No service-role or secret key in browser code.
+- Teacher invitation callback and password setup.
+- Pending teacher approval screen.
+- Admin dashboard and teacher invitation/status interface.
+- Forgot-password email request.
+- Password recovery callback and new-password form.
+- Responsive login and dashboard styling.
 
-## 1. Configure Supabase
-Open `app.js` and replace:
-- `PASTE_YOUR_SUPABASE_PROJECT_URL`
-- `PASTE_YOUR_SUPABASE_PUBLISHABLE_KEY`
+## Current application architecture
 
-Use the Project URL and the **publishable** key only. Never use a secret/service_role key in `app.js`.
+- Supabase Auth: authentication, invitation links and password recovery.
+- Cloudflare Worker: authenticated API and authorization checks.
+- Cloudflare D1: structured application records and user roles/status.
+- Cloudflare R2: uploaded files and attachments.
 
-## 2. Verify your admin profile
-In Supabase SQL Editor run:
+The browser code must contain only the Supabase project URL and publishable key. Never put a Supabase secret/service-role key in this repository.
 
-```sql
-select id, email, role, approval_status
-from public.profiles
-where email = 'dhyanshedu@gmail.com';
-```
+## Password recovery configuration
 
-Expected: `role = admin`, `approval_status = approved`.
+In Supabase Dashboard:
 
-If no row appears, verify that the Auth user exists and then run:
+1. Open **Authentication → URL Configuration**.
+2. Keep the existing portal Site URL and invitation redirect entries.
+3. Ensure the deployed portal URL is included in **Redirect URLs**. The current generated portal origin is:
 
-```sql
-insert into public.profiles (id, full_name, email, role, approval_status)
-select id, 'DhyanshEdu Admin', email, 'admin', 'approved'
-from auth.users
-where email = 'dhyanshedu@gmail.com'
-on conflict (id) do update
-set role = 'admin', approval_status = 'approved';
-```
+   `https://dhyanshedu-exam-portal.dhyanshedu.workers.dev/**`
 
-## 3. Test locally
-Because `app.js` uses JavaScript modules, serve this folder through a local web server (not by double-clicking `index.html`). For example, with Python installed:
+4. Save changes.
 
-```bash
-python -m http.server 8000
-```
+The forgot-password form calls `resetPasswordForEmail()` and redirects to the current portal page. Supabase sends the recovery email. The recovery link must return to the portal with a valid recovery session before the new-password form is shown.
 
-Then open `http://localhost:8000`.
+If the portal is later moved to `https://exam.dhyanshedu.com`, add that exact origin/path pattern to Supabase Redirect URLs and update the Site URL when the custom-domain migration is ready. Do not change DNS as part of this password-recovery update.
 
-## 4. Deploy to GitHub Pages
-Upload the contents of this folder to a new folder such as `/exam-portal/` in the `exam-portal-development` branch, or publish this folder as the root of a separate repository. Do not overwrite the existing public site's `index.html` on `main`.
+## Deployment files
 
-For a separate subdomain, configure GitHub Pages for the portal deployment and add `exam.dhyanshedu.com` as its custom domain. DNS changes should be made only after GitHub Pages provides the exact DNS records for this repository.
+For this update, replace these three files in the exam portal GitHub repository:
 
-## Important production work still required
-This is a first frontend/authentication milestone, not a complete exam system. Before real student use:
-- Add dedicated teacher/student screens and navigation permissions.
-- Add a secure Supabase Edge Function for admin-created teacher accounts (service-role key only in Edge Function secrets).
-- Review and harden all RLS policies. The initial schema created earlier is a starting point and is not yet a production security review.
-- Add server-side exam start/submission, timer enforcement, scoring, numerical tolerance, descriptive marking, and audit logs.
-- Add password reset, account recovery, rate limiting and monitoring.
-- Test with separate admin, teacher and student accounts.
+- `index.html`
+- `app.js`
+- `styles.css`
 
-Do not add student data or conduct real exams until the production security and exam-submission work is complete.
+Do not replace files in the separate public website repository.
+
+## Test checklist after deployment
+
+1. Admin can still sign in.
+2. Existing teacher can still sign in.
+3. Teacher invitation and password setup still work.
+4. Admin can still approve a teacher.
+5. Forgot password accepts a registered email and displays a neutral confirmation.
+6. The reset email opens the portal.
+7. A valid recovery link shows the new-password screen.
+8. Password update succeeds and the user can sign in with the new password.
+9. An expired/invalid recovery link does not expose a password form.
+10. A pending or inactive account remains subject to the existing Worker/D1 approval checks.
+
+## Important remaining production work
+
+This ZIP does not contain the Cloudflare Worker source or database migration scripts, so it cannot establish that the backend has passed a full security review. Before real student use, review:
+
+- Worker authentication and server-side role checks for every endpoint.
+- D1 schema, constraints, indexes and migration/backup process.
+- Student account creation and bulk-import validation.
+- Enquiry submission, spam prevention and admin follow-up workflow.
+- Exam scheduling, secure attempt creation/submission, timers, scoring and audit logs.
+- R2 upload limits, file type validation and private download authorization.
+- Rate limiting, monitoring, error handling and recovery procedures.
+
+Do not put real student data or conduct real exams until the backend security and exam workflows have been reviewed and tested.
