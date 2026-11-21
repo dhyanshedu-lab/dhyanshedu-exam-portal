@@ -113,6 +113,7 @@
       <a class="nav-item" data-page="batches" data-admin-only href="#batches"><span>▤</span> Batches</a>
       <a class="nav-item" data-page="assignments" data-admin-only href="#assignments"><span>⇄</span> Teacher assignments</a>
       <a class="nav-item" data-page="students" data-admin-only href="#students"><span>♧</span> Students</a>
+      <a class="nav-item" data-page="exam-monitoring" data-admin-only href="#exam-monitoring"><span>▥</span> Exam monitoring</a>
     </nav>
     <div class="sidebar-bottom">
       <div class="secure-note"><span>●</span><div><b>Secure workspace</b><small>Role-based access enabled</small></div></div>
@@ -212,6 +213,29 @@
           <button class="btn btn-primary" id="save-student-button" type="submit">+ Invite student</button>
         </form><p id="student-message" class="message"></p></div>
         <div class="table-card"><div class="table-heading"><h3>Students</h3><p class="muted">Pending students need Admin approval before signing in.</p></div><div class="table-scroll"><table><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Manage status</th></tr></thead><tbody id="student-list"></tbody></table></div></div>
+      </section>
+      <section id="exam-monitoring-page" class="hidden">
+        <div class="section-heading page-title"><div><h2>Exam monitoring</h2><p class="muted">Monitor examinations, student attempts, pending evaluations and published results across all batches.</p></div><button id="refresh-exam-monitoring" class="btn btn-primary" type="button">Refresh</button></div>
+        <div class="stats-grid">
+          <article class="stat-card"><p>Total exams</p><strong id="monitor-total-exams">—</strong></article>
+          <article class="stat-card"><p>Published exams</p><strong id="monitor-published-exams">—</strong></article>
+          <article class="stat-card"><p>Student attempts</p><strong id="monitor-total-attempts">—</strong></article>
+          <article class="stat-card"><p>In progress</p><strong id="monitor-in-progress">—</strong></article>
+          <article class="stat-card"><p>Pending evaluation</p><strong id="monitor-pending-evaluation">—</strong></article>
+          <article class="stat-card"><p>Evaluated attempts</p><strong id="monitor-evaluated">—</strong></article>
+          <article class="stat-card"><p>Published results</p><strong id="monitor-published-results">—</strong></article>
+          <article class="stat-card"><p>Average published score</p><strong id="monitor-average-score">—</strong></article>
+        </div>
+        <div class="form-card">
+          <div class="form-grid">
+            <div><label for="monitor-status-filter">Exam status</label><select id="monitor-status-filter"><option value="">All statuses</option><option value="draft">Draft</option><option value="scheduled">Scheduled</option><option value="published">Published</option><option value="closed">Closed</option><option value="archived">Archived</option></select></div>
+            <div><label for="monitor-search">Search exams</label><input id="monitor-search" placeholder="Exam, teacher, batch, class or subject"></div>
+          </div>
+        </div>
+        <div class="table-card"><div class="table-heading"><h3>Examination performance</h3><p class="muted">Counts are based on current D1 exam, batch enrolment, attempt and published result records.</p></div>
+          <div class="table-scroll"><table><thead><tr><th>Exam</th><th>Teacher</th><th>Batch / Class</th><th>Status</th><th>Enrolled</th><th>Attempts</th><th>In progress</th><th>Pending evaluation</th><th>Evaluated</th><th>Published results</th><th>Average %</th></tr></thead><tbody id="exam-monitoring-list"><tr><td colspan="11">Loading…</td></tr></tbody></table></div>
+        </div>
+        <p id="exam-monitoring-message" class="message"></p>
       </section>
       <p id="dashboard-message" class="message"></p>
       <footer class="page-footer">DhyanshEdu · Dhyan Today. Math Better Tomorrow.</footer>
