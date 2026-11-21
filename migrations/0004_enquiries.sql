@@ -21,13 +21,19 @@ CREATE TABLE IF NOT EXISTS enquiries (
 CREATE TABLE IF NOT EXISTS enquiry_history (
   id TEXT PRIMARY KEY,
   enquiry_id TEXT NOT NULL REFERENCES enquiries(id),
-  actor_user_id TEXT REFERENCES users(id),
-  action TEXT NOT NULL CHECK (action IN ('created','updated')),
-  field_name TEXT NOT NULL,
+  actor_id TEXT REFERENCES users(id),
+  action TEXT NOT NULL,
   old_value TEXT,
   new_value TEXT,
+  notes TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- The live Phase 1 database already has enquiry_history with actor_id/notes.
+-- Add API-facing aliases without dropping or rewriting the legacy columns.
+ALTER TABLE enquiry_history ADD COLUMN actor_user_id TEXT REFERENCES users(id);
+ALTER TABLE enquiry_history ADD COLUMN field_name TEXT;
+UPDATE enquiry_history SET actor_user_id=actor_id WHERE actor_user_id IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_enquiries_status_created
   ON enquiries(status,created_at);
