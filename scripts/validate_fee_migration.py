@@ -36,4 +36,23 @@ assert db.execute("SELECT student_id,status FROM fee_transactions WHERE id='tx-1
 assert db.execute("SELECT transaction_id,issued_at FROM fee_receipts WHERE id='receipt-1'").fetchone()[0] == "tx-1"
 assert db.execute("SELECT actor_user_id,details_json FROM audit_logs WHERE id='audit-1'").fetchone() == ("admin-1", "{}")
 
-print("Fee migration passed against the live Phase 1 schema fixture; legacy fee plan, account, payment, receipt and audit rows were preserved.")
+# Validate additive exam-answer feedback migration against the live D1 answer schema.
+db.execute("""CREATE TABLE student_answers (
+    id TEXT PRIMARY KEY,
+    attempt_id TEXT NOT NULL,
+    exam_question_id TEXT NOT NULL,
+    answer_text TEXT,
+    selected_option_ids TEXT,
+    is_correct INTEGER,
+    marks_awarded REAL,
+    answered_at TEXT,
+    UNIQUE(attempt_id, exam_question_id)
+)""")
+db.execute("""INSERT INTO student_answers(id,attempt_id,exam_question_id,answer_text,marks_awarded)
+              VALUES('answer-1','attempt-1','question-1','Existing answer',2)""")
+feedback_migration = Path("migrations/0004_exam_answer_feedback.sql").read_text()
+db.executescript(feedback_migration)
+db.execute("UPDATE student_answers SET teacher_feedback='Good working' WHERE id='answer-1'")
+assert db.execute("SELECT answer_text,marks_awarded,teacher_feedback FROM student_answers WHERE id='answer-1'").fetchone() == ("Existing answer", 2, "Good working")
+
+print("Fee and exam-feedback migrations passed against the Phase 1 schema fixture; legacy fee and answer records were preserved.")
