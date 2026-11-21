@@ -117,3 +117,6 @@ textarea{resize:vertical;min-height:76px;line-height:1.5}
 
 /* Fee management */
 #fees-page .form-card{margin-top:18px}#fee-account-list td:first-child,#fee-plan-list td:first-child{font-weight:700}#student-fee-accounts .table-card{margin:18px 0}#student-fee-accounts .table-heading p{line-height:1.7}
+
+
+.forgot-password{display:block;margin:12px auto 0;padding:4px 8px;border:0;background:transparent;color:var(--gold,#b88a3b);font:inherit;font-size:.9rem;cursor:pointer}.forgot-password:disabled{opacity:.6;cursor:wait}
