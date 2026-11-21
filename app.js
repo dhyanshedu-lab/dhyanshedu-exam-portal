@@ -20,6 +20,21 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
 let profile = null;
 let invitationFlowStarted = false;
 
+// A role-specific URL prevents a remembered Admin session from being mistaken
+// for a Teacher or Student sign-in.
+const requestedRole = new URLSearchParams(window.location.search).get("role");
+const expectedRole = ["admin", "teacher", "student"].includes(requestedRole) ? requestedRole : null;
+function configureLoginMode() {
+  const labels = { admin: "Administrator", teacher: "Teacher", student: "Student" };
+  const label = expectedRole ? labels[expectedRole] : null;
+  $("#login-heading").textContent = label ? label + " sign in" : "Welcome back";
+  $("#login-description").textContent = label
+    ? "Sign in with your " + label.toLowerCase() + " account."
+    : "Choose your portal and sign in with the account provided to you.";
+  $("#login-button").innerHTML = (label ? "Sign in as " + label : "Sign in") + ' <span>→</span>';
+}
+configureLoginMode();
+
 $("#year").textContent = new Date().getFullYear();
 $("#invite-year").textContent = new Date().getFullYear();
 $("#pending-year").textContent = new Date().getFullYear();
@@ -732,6 +747,12 @@ function dashboard(p, email) {
 async function loadProfile(session) {
   try {
     const d = await api("/api/me");
+    if (expectedRole && d.profile.role !== expectedRole) {
+      await supabase.auth.signOut();
+      profile = null;
+      showLogin("This account is registered as " + d.profile.role + ". Please use the " + d.profile.role + " sign-in page.");
+      return;
+    }
     dashboard(d.profile, session.user.email);
   } catch (e) {
     // Keep the valid Supabase session when the portal API is temporarily unavailable.
