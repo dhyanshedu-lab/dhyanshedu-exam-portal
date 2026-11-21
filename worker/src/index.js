@@ -498,7 +498,7 @@ export default {
          ).bind(evaluationMatch[1],user.id,user.id).first();
          if(!attempt) return reply({error:"Evaluation not found or you are not assigned to this exam."},404,request);
          const rows=await env.DB.prepare(
-           "SELECT eq.id exam_question_id,eq.marks,eq.negative_marks,eq.sort_order,q.question_type,q.question_text,q.explanation,sa.answer_text,sa.selected_option_ids,sa.is_correct,sa.marks_awarded,sa.teacher_feedback FROM exam_questions eq JOIN questions q ON q.id=eq.question_id LEFT JOIN student_answers sa ON sa.exam_question_id=eq.id AND sa.attempt_id=? WHERE eq.exam_id=? ORDER BY eq.sort_order"
+           "SELECT eq.id exam_question_id,q.id question_id,eq.marks,eq.negative_marks,eq.sort_order,q.question_type,q.question_text,q.explanation,sa.answer_text,sa.selected_option_ids,sa.is_correct,sa.marks_awarded,sa.teacher_feedback FROM exam_questions eq JOIN questions q ON q.id=eq.question_id LEFT JOIN student_answers sa ON sa.exam_question_id=eq.id AND sa.attempt_id=? WHERE eq.exam_id=? ORDER BY eq.sort_order"
          ).bind(attempt.attempt_id,attempt.exam_id).all();
          const options=await env.DB.prepare(
            "SELECT qo.question_id,qo.option_label,qo.option_text,qo.is_correct FROM exam_questions eq JOIN question_options qo ON qo.question_id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.sort_order,qo.sort_order"
