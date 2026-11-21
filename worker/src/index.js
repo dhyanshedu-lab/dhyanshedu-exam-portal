@@ -587,6 +587,19 @@ export default {
 
 
 
+     // Admin-only examination monitoring and performance overview.
+     if(path==="/api/admin/exam-monitoring" && method==="GET"){
+       const [summary,exams]=await Promise.all([
+         env.DB.prepare(
+           "SELECT COUNT(*) total_exams, SUM(CASE WHEN e.status='published' THEN 1 ELSE 0 END) published_exams, SUM(CASE WHEN e.status='scheduled' THEN 1 ELSE 0 END) scheduled_exams, (SELECT COUNT(*) FROM exam_attempts) total_attempts, (SELECT COUNT(*) FROM exam_attempts WHERE status='in_progress') in_progress_attempts, (SELECT COUNT(*) FROM exam_attempts WHERE status='submitted') pending_evaluation, (SELECT COUNT(*) FROM exam_attempts WHERE status='evaluated') evaluated_attempts, (SELECT COUNT(*) FROM results WHERE published_at IS NOT NULL) published_results, (SELECT ROUND(AVG(percentage),2) FROM results WHERE published_at IS NOT NULL) average_published_percentage FROM exams e"
+         ).first(),
+         env.DB.prepare(
+           "SELECT e.id,e.title,e.status,e.starts_at,e.ends_at,e.duration_minutes,e.total_marks,e.pass_marks,e.created_at,u.full_name teacher_name,b.batch_name,c.class_name,s.subject_name,(SELECT COUNT(*) FROM batch_students bs WHERE bs.batch_id=e.batch_id AND bs.status='active') enrolled_students,(SELECT COUNT(*) FROM exam_attempts ea WHERE ea.exam_id=e.id) attempts,(SELECT COUNT(*) FROM exam_attempts ea WHERE ea.exam_id=e.id AND ea.status='in_progress') in_progress,(SELECT COUNT(*) FROM exam_attempts ea WHERE ea.exam_id=e.id AND ea.status='submitted') pending_evaluation,(SELECT COUNT(*) FROM exam_attempts ea WHERE ea.exam_id=e.id AND ea.status='evaluated') evaluated,(SELECT COUNT(*) FROM results r WHERE r.exam_id=e.id AND r.published_at IS NOT NULL) published_results,(SELECT ROUND(AVG(r.percentage),2) FROM results r WHERE r.exam_id=e.id AND r.published_at IS NOT NULL) average_percentage FROM exams e LEFT JOIN users u ON u.id=e.created_by LEFT JOIN batches b ON b.id=e.batch_id LEFT JOIN classes c ON c.id=e.class_id LEFT JOIN subjects s ON s.id=e.subject_id ORDER BY e.created_at DESC LIMIT 250"
+         ).all()
+       ]);
+       return reply({success:true,summary:summary||{},exams:exams.results||[]},200,request);
+     }
+
      if (path === "/api/dashboard/stats" && method === "GET") {
 
        const [t,s,e,a,c,sub,b] = await Promise.all([
