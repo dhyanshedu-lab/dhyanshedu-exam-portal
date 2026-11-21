@@ -114,3 +114,6 @@ textarea{resize:vertical;min-height:76px;line-height:1.5}
 #teacher-submission-rows input,#teacher-submission-rows textarea{min-width:100px;padding:8px}
 #teacher-assignment-list td:first-child,#student-assignment-list td:first-child{font-weight:700;min-width:160px}
 #my-materials-list td{white-space:normal}
+
+/* Fee management */
+#fees-page .form-card{margin-top:18px}#fee-account-list td:first-child,#fee-plan-list td:first-child{font-weight:700}#student-fee-accounts .table-card{margin:18px 0}#student-fee-accounts .table-heading p{line-height:1.7}
