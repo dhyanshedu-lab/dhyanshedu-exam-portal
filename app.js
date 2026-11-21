@@ -96,7 +96,7 @@ function showPendingApproval() {
 }
 
 function page(name) {
-  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students", "exam-monitoring", "live-classes"];
+  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students", "exam-monitoring", "live-classes", "fees"];
   for (const pageName of pages) {
     const section = $(`#${pageName}-page`);
     if (section) section.classList.toggle("hidden", pageName !== name);
@@ -207,6 +207,8 @@ function roleWorkspaceSection() {
       <div class="section-heading lower"><div><h2>Assignments and homework</h2><p class="muted">Read instructions, download worksheets and submit your completed work.</p></div></div>
       <div class="table-card"><div class="table-heading"><h3>My assignments</h3></div><div class="table-scroll"><table><thead><tr><th>Assignment</th><th>Batch</th><th>Due</th><th>Status</th><th>Marks / Feedback</th><th>Action</th></tr></thead><tbody id="student-assignment-list"><tr><td colspan="6">Loading…</td></tr></tbody></table></div></div>
       <div id="student-submission-panel" class="hidden"></div>
+      <div class="section-heading lower"><div><h2>My fees and receipts</h2><p class="muted">View your agreed fee, instalments, payments and receipt numbers.</p></div></div>
+      <div id="student-fee-accounts"><div class="table-card table-heading">Loading fee information…</div></div>
     section.append(exams);
   }
   return section;
@@ -668,6 +670,7 @@ async function loadRoleWorkspace(role) {
     } else if (role === "student") {
       await loadStudentExams();
       await loadLearningTasks("student");
+      await loadStudentFees();
     }
   } catch (error) {
     const message = document.createElement("p");
@@ -1152,6 +1155,62 @@ async function loadAdminLiveClasses(){
 }
 async function loadAdminLiveAttendance(id,title){const panel=$("#admin-live-attendance"),body=$("#admin-live-attendance-list");panel.classList.remove("hidden");$("#admin-live-attendance-title").textContent="Attendance · "+title;body.innerHTML="<tr><td colspan=\"4\">Loading…</td></tr>";try{const d=await api("/api/admin/live-classes/"+encodeURIComponent(id)+"/attendance");body.replaceChildren();(d.students||[]).forEach(s=>{const tr=body.insertRow();[s.student_name,s.email,s.attendance_status||"Not marked",s.marked_by_name||"—"].forEach(v=>{const td=tr.insertCell();td.textContent=v;});});if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=4;td.textContent="No active students enrolled in this batch.";}}catch(e){body.textContent=e.message;}}
 async function openTeacherAttendance(id,title){let panel=$("#teacher-attendance-panel");if(!panel){panel=document.createElement("div");panel.id="teacher-attendance-panel";panel.className="form-card";$("#my-live-list").closest(".table-card").after(panel);}panel.innerHTML="<h3>Attendance · "+title+"</h3><p class=\"muted\">Choose Present, Late, Absent or Excused for each actively enrolled student.</p><div class=\"table-scroll\"><table><thead><tr><th>Student</th><th>Email</th><th>Attendance</th></tr></thead><tbody id=\"teacher-attendance-roster\"><tr><td colspan=\"3\">Loading…</td></tr></tbody></table></div><button id=\"save-teacher-attendance\" class=\"btn btn-primary\" type=\"button\" data-class-id=\""+id+"\">Save attendance</button><p id=\"teacher-attendance-message\" class=\"message\"></p>";try{const d=await api("/api/teacher/live-classes/"+encodeURIComponent(id)+"/attendance"),body=$("#teacher-attendance-roster");body.replaceChildren();(d.students||[]).forEach(s=>{const tr=body.insertRow();[s.student_name,s.email].forEach(v=>{const td=tr.insertCell();td.textContent=v||"—";});const td=tr.insertCell(),sel=document.createElement("select");sel.className="status-select";sel.dataset.studentId=s.student_id;[["","Select status"],["present","Present"],["late","Late"],["absent","Absent"],["excused","Excused"]].forEach(([v,l])=>{const o=document.createElement("option");o.value=v;o.textContent=l;sel.append(o);});sel.value=s.attendance_status||"";td.append(sel);});if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=3;td.textContent="No active students enrolled in this batch.";}}catch(e){panel.textContent=e.message;}}
+
+function rupees(paise){return "₹"+(Number(paise||0)/100).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});}
+async function loadAdminFees(){
+  const plansBody=$("#fee-plan-list"),accountsBody=$("#fee-account-list");
+  if(!plansBody||!accountsBody)return;
+  plansBody.innerHTML='<tr><td colspan="7">Loading…</td></tr>';accountsBody.innerHTML='<tr><td colspan="8">Loading…</td></tr>';
+  try{
+    const [boot,plans,accounts]=await Promise.all([api("/api/admin/fees/bootstrap"),api("/api/admin/fee-plans"),api("/api/admin/fee-accounts")]);
+    fillSelect($("#fee-account-student"),boot.students||[],x=>x.full_name+" · "+x.email,"Select approved student");
+    fillSelect($("#fee-account-plan"),boot.fee_plans||[],x=>x.name+" · "+rupees(x.amount_paise),"Custom agreed fee");
+    plansBody.replaceChildren();
+    (plans.fee_plans||[]).forEach(p=>{
+      const tr=plansBody.insertRow();[p.name,p.pricing_scope,p.billing_frequency,rupees(p.amount_paise),[p.effective_from,p.effective_to].filter(Boolean).join(" – ")||"—",p.public_status].forEach(v=>addCell(tr,v));
+      const action=tr.insertCell(),sel=document.createElement("select");sel.className="status-select";
+      ["draft","published","archived"].forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;sel.append(o);});sel.value=p.public_status;
+      const btn=document.createElement("button");btn.className="btn btn-secondary btn-small";btn.textContent="Save status";
+      btn.addEventListener("click",async()=>{btn.disabled=true;try{await api("/api/admin/fee-plans/"+encodeURIComponent(p.id)+"/status",{method:"PATCH",body:JSON.stringify({status:sel.value})});await loadAdminFees();}catch(e){alert(e.message);btn.disabled=false;}});
+      action.append(sel,btn);
+    });
+    if(!plansBody.children.length){const tr=plansBody.insertRow(),td=tr.insertCell();td.colSpan=7;td.textContent="No fee plans created yet.";}
+    accountsBody.replaceChildren();
+    (accounts.accounts||[]).forEach(a=>{
+      const paid=Number(a.paid_paise||0),credit=Number(a.adjustment_credit_paise||0),balance=Math.max(0,Number(a.amount_due_paise)-paid-credit),status=balance===0?"paid":a.due_date&&a.due_date<new Date().toISOString().slice(0,10)?"overdue":paid>0||credit>0?"partial":"pending";
+      const tr=accountsBody.insertRow();[a.student_name,a.description,rupees(a.amount_due_paise),rupees(paid),rupees(balance),a.due_date||"—",status].forEach(v=>addCell(tr,v));
+      const action=tr.insertCell();
+      const pay=document.createElement("button");pay.className="btn btn-primary btn-small";pay.textContent="Record payment";pay.disabled=balance<=0;
+      pay.addEventListener("click",async()=>{const value=prompt("Payment amount in INR. Outstanding: "+rupees(balance));if(value===null)return;const amount=Math.round(Number(value)*100);if(!Number.isSafeInteger(amount)||amount<=0){alert("Enter a valid positive amount.");return;}const method=prompt("Payment method: cash, bank_transfer, upi_manual or other","cash");if(!method)return;const reference=prompt("Transaction / bank reference (optional)","")||"";pay.disabled=true;try{const result=await api("/api/admin/fee-accounts/"+encodeURIComponent(a.id)+"/payments",{method:"POST",body:JSON.stringify({amount_paise:amount,payment_method:method,transaction_reference:reference})});alert("Payment recorded. Receipt: "+result.receipt_number);await loadAdminFees();}catch(e){alert(e.message);pay.disabled=false;}});
+      const adj=document.createElement("button");adj.className="btn btn-secondary btn-small";adj.textContent="Adjustment / refund";
+      adj.addEventListener("click",async()=>{const type=prompt("Type: credit, debit, refund or waiver","credit");if(!type)return;const value=prompt("Adjustment amount in INR");if(value===null)return;const amount=Math.round(Number(value)*100),reason=prompt("Reason (required)");if(!Number.isSafeInteger(amount)||amount<=0||!reason)return;try{await api("/api/admin/fee-accounts/"+encodeURIComponent(a.id)+"/adjustments",{method:"POST",body:JSON.stringify({adjustment_type:type,amount_paise:amount,reason})});await loadAdminFees();}catch(e){alert(e.message);}});
+      action.append(pay,adj);
+    });
+    if(!accountsBody.children.length){const tr=accountsBody.insertRow(),td=tr.insertCell();td.colSpan=8;td.textContent="No student fee accounts created yet.";}
+    showMessage("fee-management-message","");
+  }catch(e){showMessage("fee-management-message",e.message);plansBody.innerHTML='<tr><td colspan="7">Could not load fee plans.</td></tr>';accountsBody.innerHTML='<tr><td colspan="8">Could not load fee accounts.</td></tr>';}
+}
+async function loadStudentFees(){
+  const root=$("#student-fee-accounts");if(!root)return;root.textContent="Loading fee information…";
+  try{
+    const d=await api("/api/student/fees");root.replaceChildren();
+    (d.accounts||[]).forEach(a=>{
+      const card=document.createElement("div");card.className="table-card";
+      const heading=document.createElement("div");heading.className="table-heading";
+      const h=document.createElement("h3");h.textContent=a.description;const sub=document.createElement("p");sub.className="muted";sub.textContent=(a.plan_name||"Custom fee")+" · Agreed "+rupees(a.amount_due_paise)+" · Paid "+rupees(a.paid_paise)+" · Outstanding "+rupees(Math.max(0,Number(a.amount_due_paise)-Number(a.paid_paise||0)-Number(a.adjustment_credit_paise||0)));
+      heading.append(h,sub);card.append(heading);
+      const wrap=document.createElement("div");wrap.className="table-scroll";const table=document.createElement("table");table.innerHTML="<thead><tr><th>Payment date</th><th>Method</th><th>Amount</th><th>Receipt</th><th>Reference</th></tr></thead>";
+      const tbody=document.createElement("tbody");
+      (a.transactions||[]).forEach(t=>{const tr=tbody.insertRow();[t.received_at?new Date(t.received_at).toLocaleDateString():"—",t.payment_method,rupees(t.amount_paise),t.receipt_number||"—",t.transaction_reference||"—"].forEach(v=>addCell(tr,v));});
+      if(!tbody.children.length){const tr=tbody.insertRow(),td=tr.insertCell();td.colSpan=5;td.textContent="No payments recorded yet.";}
+      table.append(tbody);wrap.append(table);card.append(wrap);
+      if((a.installments||[]).length){const list=document.createElement("p");list.className="hint";list.textContent="Instalments: "+a.installments.map(x=>x.description+" · "+rupees(x.amount_paise)+" · due "+x.due_date).join(" | ");card.append(list);}
+      root.append(card);
+    });
+    if(!(d.accounts||[]).length)root.textContent="No fee account has been assigned to you yet.";
+  }catch(e){root.textContent=e.message;}
+}
+
 async function loadAdminPage(name) {
   try {
     if (name==="classes") await loadClasses();
@@ -1162,6 +1221,7 @@ async function loadAdminPage(name) {
     if (name==="teachers") await loadTeachers();
     if (name==="exam-monitoring") await loadExamMonitoring();
     if (name==="live-classes") await loadAdminLiveClasses();
+    if (name==="fees") await loadAdminFees();
   } catch(error) { $("#dashboard-message").textContent=error.message; }
 }
 
@@ -1500,3 +1560,24 @@ document.addEventListener("submit",async e=>{
  if(e.target.id==="teacher-assignment-form"){e.preventDefault();const f=e.target,msg=$("#teacher-assignment-message"),btn=f.querySelector("button[type=submit]");btn.disabled=true;msg.textContent="Publishing assignment…";try{const d=await api("/api/teacher/assignments",{method:"POST",body:JSON.stringify({title:$("#assignment-title").value.trim(),instructions:$("#assignment-instructions").value.trim(),batch_id:$("#assignment-batch").value,due_at:$("#assignment-due").value?new Date($("#assignment-due").value).toISOString():null,max_marks:$("#assignment-max-marks").value||null})});const file=$("#assignment-attachment").files[0];if(file){const data=new FormData();data.append("file",file);await apiForm("/api/teacher/assignments/"+d.id+"/attachments",data);}f.reset();msg.textContent="Assignment published.";await loadLearningTasks("teacher");}catch(err){msg.textContent=err.message;}finally{btn.disabled=false;}}
  if(e.target.id==="student-assignment-submit"){e.preventDefault();const f=e.target,msg=$("#student-assignment-message"),btn=f.querySelector("button[type=submit]");btn.disabled=true;msg.textContent="Submitting work…";try{const data=new FormData();data.append("answer_text",$("#student-assignment-answer").value);const file=$("#student-assignment-file").files[0];if(file)data.append("file",file);await apiForm("/api/student/assignments/"+f.dataset.assignmentId+"/submit",data);msg.textContent="Your assignment has been submitted.";await loadLearningTasks("student");}catch(err){msg.textContent=err.message;}finally{btn.disabled=false;}}
 });
+
+
+document.addEventListener("submit",async e=>{
+  if(e.target.id==="fee-plan-form"){
+    e.preventDefault();const f=e.target,msg=$("#fee-plan-message");msg.textContent="Saving draft…";
+    try{await api("/api/admin/fee-plans",{method:"POST",body:JSON.stringify({name:$("#fee-plan-name").value.trim(),amount_paise:Math.round(Number($("#fee-plan-amount").value)*100),billing_frequency:$("#fee-plan-frequency").value,pricing_scope:$("#fee-plan-scope").value,batch_type:$("#fee-plan-batch-type").value||null,effective_from:$("#fee-plan-effective-from").value||null,effective_to:$("#fee-plan-effective-to").value||null,description:$("#fee-plan-description").value,inclusions:$("#fee-plan-inclusions").value,terms:$("#fee-plan-terms").value})});f.reset();msg.textContent="Fee plan saved as draft. Publish it when ready.";await loadAdminFees();}catch(err){msg.textContent=err.message;}
+  }
+  if(e.target.id==="fee-account-form"){
+    e.preventDefault();const f=e.target,msg=$("#fee-account-message");msg.textContent="Creating student fee account…";
+    const original=Math.round(Number($("#fee-account-original").value)*100),discount=Math.round(Number($("#fee-account-discount").value||0)*100),scholarship=Math.round(Number($("#fee-account-scholarship").value||0)*100),total=Math.round(Number($("#fee-account-total").value)*100),count=Math.max(1,Math.min(24,Number($("#fee-account-installments").value||1))),first=$("#fee-account-due").value;
+    const installments=[];
+    if(count>1&&!first){msg.textContent="Select the first instalment due date.";return;}
+    if(first){let remaining=total;for(let i=0;i<count;i++){const part=i===count-1?remaining:Math.floor(total/count);remaining-=part;const date=new Date(first+"T12:00:00");date.setMonth(date.getMonth()+i);installments.push({amount_paise:part,due_date:date.toISOString().slice(0,10),description:"Instalment "+(i+1)});}}
+    try{await api("/api/admin/fee-accounts",{method:"POST",body:JSON.stringify({student_id:$("#fee-account-student").value,fee_plan_id:$("#fee-account-plan").value||null,description:$("#fee-account-description").value.trim(),original_amount_paise:original,discount_paise:discount,scholarship_paise:scholarship,amount_due_paise:total,due_date:first||null,installments,notes:$("#fee-account-notes").value})});f.reset();$("#fee-account-discount").value="0";$("#fee-account-scholarship").value="0";$("#fee-account-installments").value="1";msg.textContent="Student fee account created. Agreed amount is now fixed.";await loadAdminFees();}catch(err){msg.textContent=err.message;}
+  }
+});
+document.addEventListener("change",e=>{
+  if(e.target.id==="fee-account-plan"&&e.target.value){const p=Array.from(e.target.options).find(x=>x.value===e.target.value);if(p){const match=p.textContent.match(/·\s*₹([\d,]+(?:\.\d{2})?)/);if(match){const v=Number(match[1].replace(/,/g,""));$("#fee-account-original").value=v.toFixed(2);$("#fee-account-total").value=v.toFixed(2);}$("#fee-account-description").value=p.textContent.split(" · ")[0];}}
+  if(["fee-account-original","fee-account-discount","fee-account-scholarship"].includes(e.target.id)){const o=Number($("#fee-account-original").value||0),d=Number($("#fee-account-discount").value||0),s=Number($("#fee-account-scholarship").value||0);$("#fee-account-total").value=Math.max(0,o-d-s).toFixed(2);}
+});
+document.addEventListener("click",e=>{if(e.target.id==="refresh-fees")loadAdminFees();});
