@@ -31,6 +31,12 @@ function isInvitationCallback() {
          query.get("type") === "invite";
 }
 
+function isPasswordRecovery() {
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const query = new URLSearchParams(window.location.search);
+  return hash.get("type") === "recovery" || query.get("type") === "recovery";
+}
+
 async function api(path, opts = {}) {
   const { data: { session } } = await supabase.auth.getSession();
 
@@ -1408,11 +1414,13 @@ async function completeInvitation(e) {
 
     if (error) throw error;
 
-    // Password is set. Admin approval is still required.
+    // A password recovery returns the user to the login screen.
+    const recoveringPassword = isPasswordRecovery();
     await supabase.auth.signOut();
 
     $("#invite-form").reset();
-    showPendingApproval();
+    if (recoveringPassword) showLogin("Your password has been reset. Please sign in.");
+    else showPendingApproval();
 
   } catch (err) {
     message.textContent =
@@ -1458,6 +1466,30 @@ $("#login-form").addEventListener("submit", async e => {
 });
 
 $("#invite-form").addEventListener("submit", completeInvitation);
+
+$("#forgot-password").addEventListener("click", async () => {
+  const email = $("#email").value.trim();
+  const message = $("#login-message");
+  if (!email) {
+    message.textContent = "Enter your email address first, then select Forgot password.";
+    $("#email").focus();
+    return;
+  }
+  const button = $("#forgot-password");
+  button.disabled = true;
+  message.textContent = "Sending password reset email…";
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + "/"
+    });
+    if (error) throw error;
+    message.textContent = "If an account exists for this email, a password reset link has been sent.";
+  } catch (error) {
+    message.textContent = error.message || "Could not send the password reset email.";
+  } finally {
+    button.disabled = false;
+  }
+});
 
 $("#pending-login-button").addEventListener("click", () => {
   showLogin(
@@ -1529,12 +1561,13 @@ $("#teacher-form").addEventListener("submit", async e => {
 
 async function initializePortal() {
   const invitationLink = isInvitationCallback();
+  const recoveryLink = isPasswordRecovery();
   const { data, error } = await supabase.auth.getSession();
 
-  if (invitationLink) {
+  if (invitationLink || recoveryLink) {
     if (data.session) {
       invitationFlowStarted = true;
-      showInvitationForm();
+      showInvitationForm(recoveryLink ? "Choose a new password for your account." : "");
     } else {
       showLogin(
         "This invitation link is invalid or has expired. Ask the administrator to send a new invitation."
