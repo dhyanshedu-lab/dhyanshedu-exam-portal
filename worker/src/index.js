@@ -9,6 +9,10 @@ import { handleEnquiryRequest } from "./enquiries.js";
 
 const ALLOWED_ORIGINS = [
 
+ "https\://dhyanshedu.com",
+
+ "https\://www.dhyanshedu.com",
+
  "https\://dhyanshedu-lab.github.io",
 
  "https\://dhyanshedu-exam-portal.dhyanshedu.workers.dev"
