@@ -4,18 +4,18 @@ const fail=(message,status=400,request)=>json({error:message},status,request);
 const bucketKey=()=> "study-files/"+crypto.randomUUID();
 const fileTypes=["application/pdf","image/jpeg","image/png","image/webp","text/plain","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.presentationml.presentation","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
 async function upload(request,env){
-  if(!env.STUDY_FILES_BUCKET)throw new Error("R2 is not configured. Add the STUDY_FILES_BUCKET binding.");
+  if(!env.DB1)throw new Error("R2 is not configured. Add the DB1 binding.");
   const form=await request.formData(),file=form.get("file");
   if(!(file instanceof File)||!file.size)throw new Error("Choose a file.");
   if(file.size>12*1024*1024)throw new Error("File size must be 12 MB or less.");
   if(!fileTypes.includes(file.type))throw new Error("Allowed formats: PDF, JPG, PNG, WebP, TXT, DOCX, PPTX and XLSX.");
-  const key=bucketKey();await env.STUDY_FILES_BUCKET.put(key,file.stream(),{httpMetadata:{contentType:file.type}});
+  const key=bucketKey();await env.DB1.put(key,file.stream(),{httpMetadata:{contentType:file.type}});
   return {form,key,name:txt(file.name,240),mime:file.type,size:file.size};
 }
 async function download(env,request,row){
   if(!row)return fail("File not found or access denied.",404,request);
-  if(!env.STUDY_FILES_BUCKET)return fail("R2 file storage is not configured.",503,request);
-  const obj=await env.STUDY_FILES_BUCKET.get(row.r2_object_key);if(!obj)return fail("File is no longer available.",404,request);
+  if(!env.DB1)return fail("R2 file storage is not configured.",503,request);
+  const obj=await env.DB1.get(row.r2_object_key);if(!obj)return fail("File is no longer available.",404,request);
   const origin=request.headers.get("Origin")||"",headers={"Content-Type":row.mime_type||"application/octet-stream","Content-Disposition":"attachment; filename*=UTF-8''"+encodeURIComponent(row.file_name),"Cache-Control":"private, no-store","Vary":"Origin"};
   if(["https://dhyanshedu-lab.github.io","https://dhyanshedu-exam-portal.dhyanshedu.workers.dev"].includes(origin))headers["Access-Control-Allow-Origin"]=origin;
   return new Response(obj.body,{headers});
@@ -47,7 +47,7 @@ export async function handleStudyRequest(request,env,user,account,path,method){
       if(!title||!b)throw new Error("Enter a title and choose an active batch assigned to you.");
       const id=crypto.randomUUID();await env.DB.prepare("INSERT INTO study_materials(id,title,description,class_id,subject_id,batch_id,teacher_id,r2_object_key,file_name,mime_type,file_size_bytes,visibility) VALUES(?,?,?,?,?,?,?,?,?,?,?,'assigned')").bind(id,title,description,b.class_id,b.subject_id,b.id,user.id,up.key,up.name,up.mime,up.size).run();
       return json({success:true,id,title,file_name:up.name},201,request);
-    }catch(e){if(up?.key)await env.STUDY_FILES_BUCKET?.delete(up.key);return fail(e.message,400,request);}
+    }catch(e){if(up?.key)await env.DB1?.delete(up.key);return fail(e.message,400,request);}
   }
   if(path==="/api/teacher/assignments"&&method==="POST"&&teacher){
     const b=await request.json().catch(()=>({})),title=txt(b.title,180),instructions=txt(b.instructions,6000)||null,bid=txt(b.batch_id,80),due=txt(b.due_at,40)||null,marks=b.max_marks===""||b.max_marks==null?null:Number(b.max_marks);
@@ -59,7 +59,7 @@ export async function handleStudyRequest(request,env,user,account,path,method){
   }
   const assignmentAttach=path.match(/^\/api\/teacher\/assignments\/([0-9a-f-]+)\/attachments$/i);
   if(assignmentAttach&&method==="POST"&&teacher){
-    let up;try{const a=await env.DB.prepare("SELECT id FROM assignments WHERE id=? AND teacher_id=?").bind(assignmentAttach[1],user.id).first();if(!a)return fail("Assignment not found.",404,request);up=await upload(request,env);const id=crypto.randomUUID();await env.DB.prepare("INSERT INTO assignment_attachments(id,assignment_id,r2_object_key,file_name,mime_type,file_size_bytes) VALUES(?,?,?,?,?,?)").bind(id,a.id,up.key,up.name,up.mime,up.size).run();return json({success:true,id,file_name:up.name},201,request);}catch(e){if(up?.key)await env.STUDY_FILES_BUCKET?.delete(up.key);return fail(e.message,400,request);}
+    let up;try{const a=await env.DB.prepare("SELECT id FROM assignments WHERE id=? AND teacher_id=?").bind(assignmentAttach[1],user.id).first();if(!a)return fail("Assignment not found.",404,request);up=await upload(request,env);const id=crypto.randomUUID();await env.DB.prepare("INSERT INTO assignment_attachments(id,assignment_id,r2_object_key,file_name,mime_type,file_size_bytes) VALUES(?,?,?,?,?,?)").bind(id,a.id,up.key,up.name,up.mime,up.size).run();return json({success:true,id,file_name:up.name},201,request);}catch(e){if(up?.key)await env.DB1?.delete(up.key);return fail(e.message,400,request);}
   }
   if(path==="/api/student/assignments"&&method==="GET"&&student){
     const rows=await env.DB.prepare("SELECT a.id,a.title,a.instructions,a.due_at,a.max_marks,b.batch_name,sub.id submission_id,sub.status submission_status,sub.submitted_at,sub.marks_awarded,sub.teacher_feedback FROM assignments a JOIN batches b ON b.id=a.batch_id JOIN batch_students bs ON bs.batch_id=b.id AND bs.student_id=? AND bs.status='active' LEFT JOIN assignment_submissions sub ON sub.assignment_id=a.id AND sub.student_id=? WHERE a.status='published' AND b.status='active' ORDER BY a.due_at").bind(user.id,user.id).all();
@@ -68,17 +68,17 @@ export async function handleStudyRequest(request,env,user,account,path,method){
   }
   const submit=path.match(/^\/api\/student\/assignments\/([0-9a-f-]+)\/submit$/i);
   if(submit&&method==="POST"&&student){
-    let up;try{if(!env.STUDY_FILES_BUCKET)return fail("R2 file storage is not configured.",503,request);const form=await request.formData(),answer=txt(form.get("answer_text"),8000),file=form.get("file");
+    let up;try{if(!env.DB1)return fail("R2 file storage is not configured.",503,request);const form=await request.formData(),answer=txt(form.get("answer_text"),8000),file=form.get("file");
       const a=await env.DB.prepare("SELECT a.id,a.due_at FROM assignments a JOIN batch_students bs ON bs.batch_id=a.batch_id AND bs.student_id=? AND bs.status='active' WHERE a.id=? AND a.status='published'").bind(user.id,submit[1]).first();
       if(!a)return fail("Assignment not found or not assigned to your active batch.",404,request);
       if(!answer&&(!(file instanceof File)||!file.size))return fail("Enter an answer or attach your completed work.",400,request);
-      if(file instanceof File&&file.size){if(file.size>12*1024*1024||!["application/pdf","image/jpeg","image/png","image/webp","text/plain","application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(file.type))return fail("Attach a PDF, image, TXT or DOCX file up to 12 MB.",400,request);up={key:"study-files/submissions/"+crypto.randomUUID(),name:txt(file.name,240),mime:file.type,size:file.size};await env.STUDY_FILES_BUCKET.put(up.key,file.stream(),{httpMetadata:{contentType:file.type}});}
+      if(file instanceof File&&file.size){if(file.size>12*1024*1024||!["application/pdf","image/jpeg","image/png","image/webp","text/plain","application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(file.type))return fail("Attach a PDF, image, TXT or DOCX file up to 12 MB.",400,request);up={key:"study-files/submissions/"+crypto.randomUUID(),name:txt(file.name,240),mime:file.type,size:file.size};await env.DB1.put(up.key,file.stream(),{httpMetadata:{contentType:file.type}});}
       const old=await env.DB.prepare("SELECT id,status FROM assignment_submissions WHERE assignment_id=? AND student_id=?").bind(a.id,user.id).first();if(old?.status==="evaluated")throw new Error("This submission is already evaluated. Contact your teacher about resubmission.");
       const id=old?.id||crypto.randomUUID(),status=a.due_at&&Date.now()>Date.parse(a.due_at)?"late":"submitted";
       await env.DB.prepare("INSERT INTO assignment_submissions(id,assignment_id,student_id,answer_text,submitted_at,status) VALUES(?,?,?,?,datetime('now'),?) ON CONFLICT(assignment_id,student_id) DO UPDATE SET answer_text=excluded.answer_text,submitted_at=excluded.submitted_at,status=excluded.status").bind(id,a.id,user.id,answer||null,status).run();
       if(up)await env.DB.prepare("INSERT INTO submission_attachments(id,submission_id,r2_object_key,file_name,mime_type,file_size_bytes) VALUES(?,?,?,?,?,?)").bind(crypto.randomUUID(),id,up.key,up.name,up.mime,up.size).run();
       return json({success:true,submission_id:id,status},200,request);
-    }catch(e){if(up?.key)await env.STUDY_FILES_BUCKET?.delete(up.key);return fail(e.message,400,request);}
+    }catch(e){if(up?.key)await env.DB1?.delete(up.key);return fail(e.message,400,request);}
   }
   const teacherSubs=path.match(/^\/api\/teacher\/assignments\/([0-9a-f-]+)\/submissions$/i);
   if(teacherSubs&&method==="GET"&&teacher){
