@@ -4,7 +4,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
 const SUPABASE_URL = "https://vxifxiuitprdafvgpojh.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_WbeQeyK02QCDwayhi2NMjw_T-gOIpxG";
-const API_URL = "https://dhyanshedu-api.dhyanshedu.workers.dev";
+const API_URL = "https://dhyanshedu-api-proxy.dhyanshedu.workers.dev";
 
 const $ = s => document.querySelector(s);
 
