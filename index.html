@@ -115,6 +115,7 @@
       <a class="nav-item" data-page="students" data-admin-only href="#students"><span>♧</span> Students</a>
       <a class="nav-item" data-page="exam-monitoring" data-admin-only href="#exam-monitoring"><span>▥</span> Exam monitoring</a>
       <a class="nav-item" data-page="live-classes" data-admin-only href="#live-classes"><span>◷</span> Live classes</a>
+      <a class="nav-item" data-page="fees" data-admin-only href="#fees"><span>₹</span> Fee management</a>
     </nav>
     <div class="sidebar-bottom">
       <div class="secure-note"><span>●</span><div><b>Secure workspace</b><small>Role-based access enabled</small></div></div>
@@ -214,6 +215,38 @@
           <button class="btn btn-primary" id="save-student-button" type="submit">+ Invite student</button>
         </form><p id="student-message" class="message"></p></div>
         <div class="table-card"><div class="table-heading"><h3>Students</h3><p class="muted">Pending students need Admin approval before signing in.</p></div><div class="table-scroll"><table><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Manage status</th></tr></thead><tbody id="student-list"></tbody></table></div></div>
+      </section>
+      <section id="fees-page" class="hidden">
+        <div class="section-heading page-title"><div><h2>Fee management</h2><p class="muted">Create fee plans, preserve each student's agreed fee and record manual payments.</p></div><button id="refresh-fees" class="btn btn-primary" type="button">Refresh</button></div>
+        <div class="form-card"><h3>Create fee plan</h3><form id="fee-plan-form" class="form-grid">
+          <div><label for="fee-plan-name">Plan name</label><input id="fee-plan-name" required maxlength="160" placeholder="e.g. Class 10 Maths – Group"></div>
+          <div><label for="fee-plan-amount">Fee amount (₹)</label><input id="fee-plan-amount" type="number" min="0.01" step="0.01" required></div>
+          <div><label for="fee-plan-frequency">Billing frequency</label><select id="fee-plan-frequency"><option value="one_time">One time</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="term">Term</option><option value="annual">Annual</option></select></div>
+          <div><label for="fee-plan-scope">Pricing scope</label><select id="fee-plan-scope"><option value="general">General</option><option value="curriculum">Curriculum</option><option value="class">Class</option><option value="subject">Subject</option><option value="batch">Batch</option></select></div>
+          <div><label for="fee-plan-batch-type">Batch type (optional)</label><select id="fee-plan-batch-type"><option value="">Any</option><option value="group">Group</option><option value="one_to_one">One-to-one</option></select></div>
+          <div><label for="fee-plan-effective-from">Effective from</label><input id="fee-plan-effective-from" type="date"></div>
+          <div><label for="fee-plan-effective-to">Effective to</label><input id="fee-plan-effective-to" type="date"></div>
+          <div class="full"><label for="fee-plan-description">Description</label><textarea id="fee-plan-description" rows="2" maxlength="2000"></textarea></div>
+          <div class="full"><label for="fee-plan-inclusions">Inclusions (public)</label><textarea id="fee-plan-inclusions" rows="2" maxlength="3000"></textarea></div>
+          <div class="full"><label for="fee-plan-terms">Terms (public)</label><textarea id="fee-plan-terms" rows="2" maxlength="3000"></textarea></div>
+          <div><button class="btn btn-primary" type="submit">Save draft plan</button></div>
+        </form><p id="fee-plan-message" class="message"></p></div>
+        <div class="table-card"><div class="table-heading"><h3>Fee plans</h3><p class="muted">Plans remain private drafts until you publish them.</p></div><div class="table-scroll"><table><thead><tr><th>Plan</th><th>Scope</th><th>Frequency</th><th>Amount</th><th>Effective dates</th><th>Public status</th><th>Action</th></tr></thead><tbody id="fee-plan-list"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div>
+        <div class="form-card"><h3>Create student fee account</h3><form id="fee-account-form" class="form-grid">
+          <div><label for="fee-account-student">Student</label><select id="fee-account-student" required><option value="">Select approved student</option></select></div>
+          <div><label for="fee-account-plan">Fee plan (optional)</label><select id="fee-account-plan"><option value="">Custom agreed fee</option></select></div>
+          <div><label for="fee-account-description">Fee description</label><input id="fee-account-description" required maxlength="240" placeholder="e.g. Maths tuition – 2026 term 1"></div>
+          <div><label for="fee-account-original">Original fee (₹)</label><input id="fee-account-original" type="number" min="0" step="0.01" required></div>
+          <div><label for="fee-account-discount">Discount (₹)</label><input id="fee-account-discount" type="number" min="0" step="0.01" value="0"></div>
+          <div><label for="fee-account-scholarship">Scholarship (₹)</label><input id="fee-account-scholarship" type="number" min="0" step="0.01" value="0"></div>
+          <div><label for="fee-account-total">Agreed fee after discount (₹)</label><input id="fee-account-total" type="number" min="0" step="0.01" required></div>
+          <div><label for="fee-account-due">First / final due date</label><input id="fee-account-due" type="date"></div>
+          <div><label for="fee-account-installments">Number of monthly instalments</label><input id="fee-account-installments" type="number" min="1" max="24" value="1"></div>
+          <div class="full"><label for="fee-account-notes">Internal notes</label><textarea id="fee-account-notes" rows="2" maxlength="2000"></textarea></div>
+          <div><button class="btn btn-primary" type="submit">Create fee account</button></div>
+        </form><p class="hint">The agreed total is stored against the student and will not change if the public fee plan changes.</p><p id="fee-account-message" class="message"></p></div>
+        <div class="table-card"><div class="table-heading"><h3>Student fee accounts</h3><p class="muted">Outstanding balances are calculated from the agreed fee, recorded payments and adjustments.</p></div><div class="table-scroll"><table><thead><tr><th>Student</th><th>Description</th><th>Agreed fee</th><th>Paid</th><th>Outstanding</th><th>Due date</th><th>Status</th><th>Actions</th></tr></thead><tbody id="fee-account-list"><tr><td colspan="8">Loading…</td></tr></tbody></table></div></div>
+        <p id="fee-management-message" class="message"></p>
       </section>
       <section id="exam-monitoring-page" class="hidden">
         <div class="section-heading page-title"><div><h2>Exam monitoring</h2><p class="muted">Monitor examinations, student attempts, pending evaluations and published results across all batches.</p></div><button id="refresh-exam-monitoring" class="btn btn-primary" type="button">Refresh</button></div>
