@@ -79,7 +79,7 @@ function showPendingApproval() {
 }
 
 function page(name) {
-  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students"];
+  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students", "exam-monitoring"];
   for (const pageName of pages) {
     const section = $(`#${pageName}-page`);
     if (section) section.classList.toggle("hidden", pageName !== name);
@@ -1008,6 +1008,67 @@ async function loadStudents() {
   });
   if (!students.length) { const row=body.insertRow(); const td=addCell(row,"No students invited yet."); td.colSpan=4; }
 }
+let examMonitoringRows = [];
+
+function renderExamMonitoringRows() {
+  const body=$("#exam-monitoring-list");if(!body)return;
+  const status=$("#monitor-status-filter")?.value||"";
+  const search=($("#monitor-search")?.value||"").trim().toLowerCase();
+  const rows=examMonitoringRows.filter(x=>
+    (!status||x.status===status) &&
+    (!search||[x.title,x.teacher_name,x.batch_name,x.class_name,x.subject_name].some(v=>String(v||"").toLowerCase().includes(search)))
+  );
+  body.replaceChildren();
+  if(!rows.length){const tr=body.insertRow();const td=tr.insertCell();td.colSpan=11;td.textContent="No examinations match the selected filters.";return;}
+  rows.forEach(x=>{
+    const tr=body.insertRow();
+    const exam=addCell(tr,x.title);
+    const subject=document.createElement("small");subject.className="muted";subject.textContent=x.subject_name||"";
+    exam.append(document.createElement("br"),subject);
+    addCell(tr,x.teacher_name);
+    addCell(tr,[x.batch_name,x.class_name].filter(Boolean).join(" / "));
+    tr.insertCell().append(statusTag(x.status));
+    [x.enrolled_students,x.attempts,x.in_progress,x.pending_evaluation,x.evaluated,x.published_results,
+     x.average_percentage==null?"—":Number(x.average_percentage).toFixed(2)+"%"].forEach(v=>addCell(tr,v));
+  });
+}
+
+async function loadExamMonitoring() {
+  const body=$("#exam-monitoring-list");if(!body)return;
+  body.innerHTML='<tr><td colspan="11">Loading exam monitoring data…</td></tr>';
+  showMessage("exam-monitoring-message","");
+  try{
+    const d=await api("/api/admin/exam-monitoring");
+    const s=d.summary||{};
+    const values={
+      "monitor-total-exams":s.total_exams??0,
+      "monitor-published-exams":s.published_exams??0,
+      "monitor-total-attempts":s.total_attempts??0,
+      "monitor-in-progress":s.in_progress_attempts??0,
+      "monitor-pending-evaluation":s.pending_evaluation??0,
+      "monitor-evaluated":s.evaluated_attempts??0,
+      "monitor-published-results":s.published_results??0,
+      "monitor-average-score":s.average_published_percentage==null?"—":Number(s.average_published_percentage).toFixed(2)+"%"
+    };
+    Object.entries(values).forEach(([id,value])=>{const el=$("#"+id);if(el)el.textContent=value;});
+    examMonitoringRows=d.exams||[];
+    renderExamMonitoringRows();
+  }catch(error){
+    body.replaceChildren();const tr=body.insertRow();const td=tr.insertCell();td.colSpan=11;td.textContent=error.message;
+    showMessage("exam-monitoring-message","Could not load examination monitoring.");
+  }
+}
+
+document.addEventListener("change",e=>{
+  if(e.target.id==="monitor-status-filter")renderExamMonitoringRows();
+});
+document.addEventListener("input",e=>{
+  if(e.target.id==="monitor-search")renderExamMonitoringRows();
+});
+document.addEventListener("click",e=>{
+  if(e.target.id==="refresh-exam-monitoring")loadExamMonitoring();
+});
+
 async function loadAdminPage(name) {
   try {
     if (name==="classes") await loadClasses();
@@ -1016,6 +1077,7 @@ async function loadAdminPage(name) {
     if (name==="assignments") await loadAssignments();
     if (name==="students") await loadStudents();
     if (name==="teachers") await loadTeachers();
+    if (name==="exam-monitoring") await loadExamMonitoring();
   } catch(error) { $("#dashboard-message").textContent=error.message; }
 }
 
