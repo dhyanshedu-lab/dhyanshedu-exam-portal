@@ -734,8 +734,9 @@ async function loadProfile(session) {
     const d = await api("/api/me");
     dashboard(d.profile, session.user.email);
   } catch (e) {
-    await supabase.auth.signOut();
-    showLogin(e.message);
+    // Keep the valid Supabase session when the portal API is temporarily unavailable.
+    // Signing out here hides the real API failure and forces users to re-enter credentials.
+    showLogin("Your sign-in is still active, but the portal could not load your profile: " + e.message + ". Please try again shortly.");
   }
 }
 
