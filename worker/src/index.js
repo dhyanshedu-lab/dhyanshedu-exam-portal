@@ -1,6 +1,6 @@
-// SOURCE SNAPSHOT
+// DhyanshEdu Cloudflare Worker — consolidated working source
 // Transcribed from the Worker source supplied for the DhyanshEdu review.
-// This is not independently confirmed as the currently deployed Worker.
+// Based on the Worker source supplied for this project; deployed version has not been independently diffed.
 // Reviewed syntax after removing pasted-document escaping; do not deploy without
 // environment binding review, API tests, and approval.
 
@@ -210,19 +210,19 @@ export default {
 
        const [t,s,e,a,c,sub,b] = await Promise.all([
 
-         env.DB.prepare("SELECT COUNT(\*) total FROM users WHERE role='teacher' AND deleted_at IS NULL").first(),
+         env.DB.prepare("SELECT COUNT(*) total FROM users WHERE role='teacher' AND deleted_at IS NULL").first(),
 
-         env.DB.prepare("SELECT COUNT(\*) total FROM users WHERE role='student' AND deleted_at IS NULL").first(),
+         env.DB.prepare("SELECT COUNT(*) total FROM users WHERE role='student' AND deleted_at IS NULL").first(),
 
-         env.DB.prepare("SELECT COUNT(\*) total FROM exams").first(),
+         env.DB.prepare("SELECT COUNT(*) total FROM exams").first(),
 
-         env.DB.prepare("SELECT COUNT(\*) total FROM exam_attempts").first(),
+         env.DB.prepare("SELECT COUNT(*) total FROM exam_attempts").first(),
 
-         env.DB.prepare("SELECT COUNT(\*) total FROM classes WHERE status='active'").first(),
+         env.DB.prepare("SELECT COUNT(*) total FROM classes WHERE status='active'").first(),
 
-         env.DB.prepare("SELECT COUNT(\*) total FROM subjects WHERE status='active'").first(),
+         env.DB.prepare("SELECT COUNT(*) total FROM subjects WHERE status='active'").first(),
 
-         env.DB.prepare("SELECT COUNT(\*) total FROM batches WHERE status='active'").first()
+         env.DB.prepare("SELECT COUNT(*) total FROM batches WHERE status='active'").first()
 
        ]);
 
@@ -232,7 +232,7 @@ export default {
 
 
 
-*// Teacher accounts*
+// Teacher accounts*
 
      if (path === "/api/teachers" && method === "GET") {
 
@@ -296,7 +296,7 @@ export default {
 
 
 
-*// Students (student accounts only; no parent accounts)*
+// Students (student accounts only; no parent accounts)*
 
      if (path === "/api/students" && method === "GET") {
 
@@ -334,7 +334,7 @@ export default {
 
 
 
-*// Curriculum, competitive-exam pathways and academic-year master data*
+// Curriculum, competitive-exam pathways and academic-year master data*
 
      if (path === "/api/master-data" && method === "GET") {
 
@@ -444,7 +444,7 @@ export default {
 
 
 
-*// Classes*
+// Classes*
 
      if (path === "/api/classes" && method === "GET") {
 
@@ -492,7 +492,7 @@ export default {
 
 
 
-*// Subjects*
+// Subjects*
 
      if (path === "/api/subjects" && method === "GET") {
 
@@ -508,7 +508,7 @@ export default {
 
        if (!name) return reply({error:"Subject name is required"},400,request);
 
-*// subjects.id is INTEGER PRIMARY KEY; let D1 generate it.*
+// subjects.id is INTEGER PRIMARY KEY; let D1 generate it.*
 
        const result=await env.DB.prepare("INSERT INTO subjects(subject_name,status) VALUES(?,'active')").bind(name).run();
 
@@ -516,7 +516,7 @@ export default {
 
      }
 
-*// Subject IDs are INTEGER in the existing D1 schema.*
+// Subject IDs are INTEGER in the existing D1 schema.*
 
      m=path.match(/^\/api\/subjects\/(\d+)\/status$/i);
 
@@ -536,7 +536,7 @@ export default {
 
 
 
-*// Batches*
+// Batches*
 
      if (path === "/api/batches" && method === "GET") {
 
@@ -634,7 +634,7 @@ export default {
 
 
 
-*// Teacher-to-class-and-subject assignment*
+// Teacher-to-class-and-subject assignment*
 
      if (path === "/api/teacher-assignments" && method === "GET") {
 
@@ -656,13 +656,14 @@ export default {
 
        if (!t || !b.class_id || !b.subject_id) return reply({error:"Select an approved teacher, class and subject"},400,request);
 
-       const id=crypto.randomUUID();
-
-       try { await env.DB.prepare("INSERT INTO teacher_assignments(id,teacher_id,class_id,subject_id) VALUES(?,?,?,?)").bind(id,t.id,b.class_id,b.subject_id).run(); }
-
-       catch { return reply({error:"This teacher may already be assigned to this class and subject"},409,request); }
-
-       return reply({success:true,id},201,request);
+       try {
+         const result = await env.DB.prepare(
+           "INSERT INTO teacher_assignments(teacher_id,class_id,subject_id) VALUES(?,?,?)"
+         ).bind(t.id,Number(b.class_id),Number(b.subject_id)).run();
+         return reply({success:true,id:result.meta?.last_row_id},201,request);
+       } catch {
+         return reply({error:"This teacher may already be assigned to this class and subject"},409,request);
+       }
 
      }
 
@@ -680,7 +681,7 @@ export default {
 
 
 
-*// Teacher assignment to batch*
+// Teacher assignment to batch*
 
      m=path.match(/^\/api\/batches\/([0-9a-f-]+)\/teachers$/i);
 
@@ -702,7 +703,7 @@ export default {
 
      }
 
-*// Student enrollment in batch*
+// Student enrollment in batch*
 
      m=path.match(/^\/api\/batches\/([0-9a-f-]+)\/students$/i);
 
