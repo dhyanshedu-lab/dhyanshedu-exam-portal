@@ -322,7 +322,7 @@ async function submitStudentExam(auto=false) {
   for(const button of buttons){
     const card=button.closest(".student-question");
     const saved=await saveStudentAnswer(card);
-    if(!saved){const submit=$("#student-submit-exam");if(submit)submit.disabled=false;return;}
+    if(!saved && !auto){const submit=$("#student-submit-exam");if(submit)submit.disabled=false;return;}
   }
   const submit=$("#student-submit-exam");if(submit)submit.disabled=true;
   try{
