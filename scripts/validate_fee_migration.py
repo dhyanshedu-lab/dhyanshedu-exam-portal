@@ -36,6 +36,24 @@ assert db.execute("SELECT student_id,status FROM fee_transactions WHERE id='tx-1
 assert db.execute("SELECT transaction_id,issued_at FROM fee_receipts WHERE id='receipt-1'").fetchone()[0] == "tx-1"
 assert db.execute("SELECT actor_user_id,details_json FROM audit_logs WHERE id='audit-1'").fetchone() == ("admin-1", "{}")
 
+# Reproduce the existing live D1 enquiry schema, including its legacy history columns.
+db.execute("""CREATE TABLE enquiries (
+    id TEXT PRIMARY KEY, student_name TEXT NOT NULL, parent_name TEXT, phone TEXT NOT NULL,
+    email TEXT NOT NULL, student_class TEXT NOT NULL, board TEXT,
+    source TEXT NOT NULL DEFAULT 'public_website',
+    status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','contacted','demo_scheduled','enrolled','closed')),
+    assigned_to TEXT REFERENCES users(id), follow_up_at TEXT, admin_notes TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+)""")
+db.execute("""CREATE TABLE enquiry_history (
+    id TEXT PRIMARY KEY, enquiry_id TEXT NOT NULL REFERENCES enquiries(id),
+    actor_id TEXT REFERENCES users(id), action TEXT NOT NULL, old_value TEXT,
+    new_value TEXT, notes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)""")
+db.execute("INSERT INTO enquiries(id,student_name,phone,email,student_class) VALUES('legacy-enq','Legacy Student','9876543210','legacy@example.test','Class 7')")
+db.execute("""INSERT INTO enquiry_history(id,enquiry_id,actor_id,action,old_value,new_value,notes)
+              VALUES('legacy-eh','legacy-enq','admin-1','status_changed','new','contacted','Existing note')""")
+
 # Validate the enquiry migration on the same D1 fixture.
 enquiry_migration = Path("migrations/0004_enquiries.sql").read_text()
 db.executescript(enquiry_migration)
@@ -51,5 +69,7 @@ db.execute("""INSERT INTO enquiry_history(id,enquiry_id,actor_user_id,action,fie
               VALUES('eh-2','enq-1','admin-1','updated','status','new','contacted')""")
 assert db.execute("SELECT status,assigned_to,follow_up_at,admin_notes FROM enquiries WHERE id='enq-1'").fetchone() == ("contacted","teacher-1","2026-11-25","Call in evening")
 assert db.execute("SELECT COUNT(*) FROM enquiry_history WHERE enquiry_id='enq-1'").fetchone()[0] == 2
+assert db.execute("SELECT actor_user_id,field_name FROM enquiry_history WHERE id='legacy-eh'").fetchone() == ("admin-1", None)
+assert db.execute("SELECT source FROM enquiries WHERE id='legacy-enq'").fetchone() == ("public_website",)
 
 print("Fee and enquiry migrations passed against the Phase 1 D1 schema fixture; legacy fee records and enquiry follow-up history were preserved.")
