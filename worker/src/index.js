@@ -253,8 +253,8 @@ export default {
 
        if (path === "/api/my/live-classes" && method === "GET") {
          const result = isTeacher
-           ? await env.DB.prepare("SELECT id,title,description,batch_id,class_id,subject_id,meeting_provider,meeting_url,starts_at,ends_at,status FROM live_classes WHERE teacher_id=? ORDER BY starts_at").bind(user.id).all()
-           : await env.DB.prepare("SELECT DISTINCT lc.id,lc.title,lc.description,lc.batch_id,lc.class_id,lc.subject_id,lc.meeting_provider,lc.meeting_url,lc.starts_at,lc.ends_at,lc.status FROM live_classes lc WHERE lc.status<>'cancelled' AND (EXISTS (SELECT 1 FROM batch_students bs WHERE bs.student_id=? AND bs.status='active' AND bs.batch_id=lc.batch_id) OR (lc.batch_id IS NULL AND EXISTS (SELECT 1 FROM batch_students bs JOIN batches b ON b.id=bs.batch_id WHERE bs.student_id=? AND bs.status='active' AND b.class_id=lc.class_id))) ORDER BY lc.starts_at").bind(user.id,user.id).all();
+           ? await env.DB.prepare("SELECT lc.id,lc.title,lc.description,lc.batch_id,lc.class_id,lc.subject_id,lc.meeting_provider,lc.meeting_url,lc.starts_at,lc.ends_at,lc.status,b.batch_name FROM live_classes lc LEFT JOIN batches b ON b.id=lc.batch_id WHERE lc.teacher_id=? ORDER BY lc.starts_at").bind(user.id).all()
+           : await env.DB.prepare("SELECT DISTINCT lc.id,lc.title,lc.description,lc.batch_id,lc.class_id,lc.subject_id,lc.meeting_provider,lc.meeting_url,lc.starts_at,lc.ends_at,lc.status,b.batch_name,t.full_name teacher_name FROM live_classes lc LEFT JOIN batches b ON b.id=lc.batch_id LEFT JOIN users t ON t.id=lc.teacher_id WHERE lc.status<>'cancelled' AND (EXISTS (SELECT 1 FROM batch_students bs WHERE bs.student_id=? AND bs.status='active' AND bs.batch_id=lc.batch_id) OR (lc.batch_id IS NULL AND EXISTS (SELECT 1 FROM batch_students bs JOIN batches b ON b.id=bs.batch_id WHERE bs.student_id=? AND bs.status='active' AND b.class_id=lc.class_id))) ORDER BY lc.starts_at").bind(user.id,user.id).all();
          return reply({success:true,live_classes:result.results||[]},200,request);
        }
      }
