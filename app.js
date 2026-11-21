@@ -748,9 +748,8 @@ async function loadProfile(session) {
   try {
     const d = await api("/api/me");
     if (expectedRole && d.profile.role !== expectedRole) {
-      await supabase.auth.signOut();
       profile = null;
-      showLogin("This account is registered as " + d.profile.role + ". Please use the " + d.profile.role + " sign-in page.");
+      showLogin("This account is registered as " + d.profile.role + ". Please sign in with a " + expectedRole + " account.");
       return;
     }
     dashboard(d.profile, session.user.email);
