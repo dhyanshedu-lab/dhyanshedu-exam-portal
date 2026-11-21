@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS fee_adjustments (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+ALTER TABLE fee_plans ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;
+
 CREATE INDEX IF NOT EXISTS idx_fee_plans_public ON fee_plans(public_status,is_active,effective_from,effective_to);
 CREATE INDEX IF NOT EXISTS idx_fee_plans_scope ON fee_plans(pricing_scope,curriculum_id,class_id,subject_id,batch_id);
 CREATE INDEX IF NOT EXISTS idx_fee_installments_due ON fee_installments(fee_account_id,due_date,status);
@@ -67,7 +69,6 @@ CREATE INDEX IF NOT EXISTS idx_fee_adjustments_account ON fee_adjustments(fee_ac
 -- Keep the original columns intact; copy existing values into the API-facing aliases.
 ALTER TABLE fee_plans ADD COLUMN name TEXT;
 ALTER TABLE fee_plans ADD COLUMN billing_frequency TEXT;
-ALTER TABLE fee_plans ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;
 UPDATE fee_plans SET name=plan_name, billing_frequency=billing_period;
 
 ALTER TABLE student_fee_accounts ADD COLUMN description TEXT;
