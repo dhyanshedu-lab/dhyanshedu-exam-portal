@@ -5,8 +5,13 @@ const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_WbeQeyK02QCDwayhi2NMjw_T-gOIpxG
 const API_URL = "https://dhyanshedu-api.dhyanshedu.workers.dev";
 
 const $ = s => document.querySelector(s);
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
+  }
 });
 
 let profile = null;
@@ -19,12 +24,18 @@ $("#pending-year").textContent = new Date().getFullYear();
 function isInvitationCallback() {
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const query = new URLSearchParams(window.location.search);
-  return hash.get("type") === "invite" || query.get("type") === "invite";
+
+  return hash.get("type") === "invite" ||
+         query.get("type") === "invite";
 }
 
 async function api(path, opts = {}) {
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) throw new Error("Please sign in again.");
+
+  if (!session?.access_token) {
+    throw new Error("Please sign in again.");
+  }
+
   const r = await fetch(API_URL + path, {
     ...opts,
     headers: {
@@ -33,15 +44,21 @@ async function api(path, opts = {}) {
       ...(opts.headers || {})
     }
   });
+
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.error || `Request failed (${r.status})`);
+
+  if (!r.ok) {
+    throw new Error(d.error || `Request failed (${r.status})`);
+  }
+
   return d;
 }
 
 function hideAllViews() {
-  ["login-view", "invite-view", "pending-view", "dashboard-view"].forEach(id => {
-    $("#" + id).classList.add("hidden");
-  });
+  ["login-view", "invite-view", "pending-view", "dashboard-view"]
+    .forEach(id => {
+      $("#" + id).classList.add("hidden");
+    });
 }
 
 function showLogin(message = "") {
@@ -64,32 +81,40 @@ function showPendingApproval() {
 function page(name) {
   $("#overview-page").classList.toggle("hidden", name !== "overview");
   $("#teachers-page").classList.toggle("hidden", name !== "teachers");
+
   document.querySelectorAll(".nav-item[data-page]").forEach(x =>
     x.classList.toggle("active", x.dataset.page === name)
   );
+
   if (name === "teachers") loadTeachers();
 }
 
 function dashboard(p, email) {
   profile = p;
+
   hideAllViews();
   $("#dashboard-view").classList.remove("hidden");
 
   const n = p.full_name || email || "User";
+
   $("#user-name").textContent = n;
   $("#user-role").textContent = p.role;
   $("#avatar").textContent = n[0].toUpperCase();
-  $("#welcome-title").textContent = p.role === "admin" ? "Admin dashboard" : `${p.role} dashboard`;
+
+  $("#welcome-title").textContent =
+    p.role === "admin" ? "Admin dashboard" : `${p.role} dashboard`;
 
   document.querySelectorAll("[data-admin-only]").forEach(x =>
     x.classList.toggle("hidden", p.role !== "admin")
   );
 
   page("overview");
+
   if (p.role === "admin") {
     loadStats();
   } else {
-    $("#dashboard-message").textContent = "Your teacher workspace will be enabled in a later phase.";
+    $("#dashboard-message").textContent =
+      "Your teacher workspace will be enabled in a later phase.";
   }
 }
 
@@ -106,11 +131,15 @@ async function loadProfile(session) {
 async function loadStats() {
   try {
     const { stats } = await api("/api/dashboard/stats");
+
     $("#teacher-count").textContent = stats.teachers;
     $("#student-count").textContent = stats.students;
     $("#exam-count").textContent = stats.exams;
     $("#attempt-count").textContent = stats.attempts;
-    $("#dashboard-message").textContent = "Connected to DhyanshEdu backend.";
+
+    $("#dashboard-message").textContent =
+      "Connected to DhyanshEdu backend.";
+
   } catch (e) {
     $("#dashboard-message").textContent = e.message;
   }
@@ -118,22 +147,31 @@ async function loadStats() {
 
 async function loadTeachers() {
   const body = $("#teacher-list");
+
   body.innerHTML = '<tr><td colspan="4">Loading…</td></tr>';
 
   try {
     const { teachers } = await api("/api/teachers");
+
     $("#teacher-total").textContent = teachers.length;
-    $("#teacher-pending").textContent = teachers.filter(t => t.status === "pending").length;
-    $("#teacher-approved").textContent = teachers.filter(t => t.status === "approved").length;
+
+    $("#teacher-pending").textContent =
+      teachers.filter(t => t.status === "pending").length;
+
+    $("#teacher-approved").textContent =
+      teachers.filter(t => t.status === "approved").length;
+
     body.replaceChildren();
 
     if (!teachers.length) {
-      body.innerHTML = '<tr><td colspan="4" class="empty-state">No teachers yet. Select Add teacher to invite one.</td></tr>';
+      body.innerHTML =
+        '<tr><td colspan="4" class="empty-state">No teachers yet. Select Add teacher to invite one.</td></tr>';
       return;
     }
 
     for (const t of teachers) {
       const tr = document.createElement("tr");
+
       for (const value of [t.full_name, t.email]) {
         const td = document.createElement("td");
         td.textContent = value || "";
@@ -142,31 +180,44 @@ async function loadTeachers() {
 
       const st = document.createElement("td");
       const badge = document.createElement("span");
+
       badge.className = `status-pill ${t.status}`;
       badge.textContent = t.status;
+
       st.append(badge);
       tr.append(st);
 
       const action = document.createElement("td");
       const select = document.createElement("select");
+
       select.className = "status-select";
 
       ["pending", "approved", "inactive"].forEach(v => {
         const o = document.createElement("option");
+
         o.value = v;
         o.textContent = v[0].toUpperCase() + v.slice(1);
         o.selected = v === t.status;
+
         select.append(o);
       });
 
       select.addEventListener("change", async () => {
         select.disabled = true;
+
         try {
-          await api(`/api/teachers/${encodeURIComponent(t.id)}/status`, {
-            method: "PATCH",
-            body: JSON.stringify({ status: select.value })
-          });
+          await api(
+            `/api/teachers/${encodeURIComponent(t.id)}/status`,
+            {
+              method: "PATCH",
+              body: JSON.stringify({
+                status: select.value
+              })
+            }
+          );
+
           await loadTeachers();
+
         } catch (e) {
           alert(e.message);
           select.disabled = false;
@@ -174,15 +225,78 @@ async function loadTeachers() {
       });
 
       action.append(select);
+
+      // Remove Teacher button
+      const removeButton = document.createElement("button");
+
+      removeButton.type = "button";
+      removeButton.textContent = "Remove teacher";
+
+      removeButton.setAttribute(
+        "aria-label",
+        `Remove ${t.full_name || "teacher"}`
+      );
+
+      removeButton.style.marginLeft = "8px";
+      removeButton.style.padding = "7px 10px";
+      removeButton.style.border = "1px solid #b42318";
+      removeButton.style.borderRadius = "6px";
+      removeButton.style.background = "#fff";
+      removeButton.style.color = "#b42318";
+      removeButton.style.cursor = "pointer";
+
+      removeButton.addEventListener("click", async () => {
+
+        const confirmed = window.confirm(
+          `Remove ${t.full_name || "this teacher"}?\n\n` +
+          "They will lose portal access and disappear from the active teacher list. " +
+          "Historical exams, marks and audit records will be preserved."
+        );
+
+        if (!confirmed) return;
+
+        removeButton.disabled = true;
+        removeButton.textContent = "Removing…";
+        select.disabled = true;
+
+        try {
+          await api(
+            `/api/teachers/${encodeURIComponent(t.id)}`,
+            {
+              method: "DELETE"
+            }
+          );
+
+          await loadTeachers();
+          await loadStats();
+
+          alert(
+            `${t.full_name || "Teacher"} has been removed successfully.`
+          );
+
+        } catch (e) {
+          alert(e.message || "Could not remove teacher.");
+
+          removeButton.disabled = false;
+          removeButton.textContent = "Remove teacher";
+          select.disabled = false;
+        }
+      });
+
+      action.append(removeButton);
       tr.append(action);
       body.append(tr);
     }
+
   } catch (e) {
     body.innerHTML = "";
+
     const tr = document.createElement("tr");
     const td = document.createElement("td");
+
     td.colSpan = 4;
     td.textContent = e.message;
+
     tr.append(td);
     body.append(tr);
   }
@@ -195,12 +309,15 @@ async function completeInvitation(e) {
   const confirmation = $("#invite-password-confirm").value;
   const button = $("#invite-button");
   const message = $("#invite-message");
+
   message.textContent = "";
 
   if (password.length < 8) {
-    message.textContent = "Use a password with at least 8 characters.";
+    message.textContent =
+      "Use a password with at least 8 characters.";
     return;
   }
+
   if (password !== confirmation) {
     message.textContent = "The passwords do not match.";
     return;
@@ -211,14 +328,20 @@ async function completeInvitation(e) {
 
   try {
     const { error } = await supabase.auth.updateUser({ password });
+
     if (error) throw error;
 
-    // Password is now set. D1 status remains pending until Admin approves.
+    // Password is set. Admin approval is still required.
     await supabase.auth.signOut();
+
     $("#invite-form").reset();
     showPendingApproval();
+
   } catch (err) {
-    message.textContent = err.message || "Could not save your password. Reopen the invitation email and try again.";
+    message.textContent =
+      err.message ||
+      "Could not save your password. Reopen the invitation email and try again.";
+
   } finally {
     button.disabled = false;
     button.textContent = "Create password";
@@ -228,13 +351,16 @@ async function completeInvitation(e) {
 $("#toggle-password").addEventListener("click", () => {
   const i = $("#password");
   const show = i.type === "password";
+
   i.type = show ? "text" : "password";
   $("#toggle-password").textContent = show ? "Hide" : "Show";
 });
 
 $("#login-form").addEventListener("submit", async e => {
   e.preventDefault();
+
   const b = $("#login-button");
+
   b.disabled = true;
   b.textContent = "Signing in…";
 
@@ -250,17 +376,21 @@ $("#login-form").addEventListener("submit", async e => {
     $("#login-message").textContent = error.message;
     return;
   }
+
   await loadProfile(data.session);
 });
 
 $("#invite-form").addEventListener("submit", completeInvitation);
 
 $("#pending-login-button").addEventListener("click", () => {
-  showLogin("Your password is set. Sign in after the administrator approves your account.");
+  showLogin(
+    "Your password is set. Sign in after the administrator approves your account."
+  );
 });
 
 $("#signout-button").addEventListener("click", async () => {
   await supabase.auth.signOut();
+
   profile = null;
   showLogin("You have signed out.");
 });
@@ -268,7 +398,10 @@ $("#signout-button").addEventListener("click", async () => {
 document.querySelectorAll(".nav-item[data-page]").forEach(a => {
   a.addEventListener("click", e => {
     e.preventDefault();
-    if (profile?.role === "admin") page(a.dataset.page);
+
+    if (profile?.role === "admin") {
+      page(a.dataset.page);
+    }
   });
 });
 
@@ -278,13 +411,18 @@ $("#add-teacher-button").addEventListener("click", () => {
   $("#teacher-dialog").showModal();
 });
 
-$("#close-teacher-dialog").addEventListener("click", () => $("#teacher-dialog").close());
+$("#close-teacher-dialog").addEventListener("click", () =>
+  $("#teacher-dialog").close()
+);
 
 $("#teacher-form").addEventListener("submit", async e => {
   e.preventDefault();
+
   const b = $("#save-teacher-button");
+
   b.disabled = true;
   b.textContent = "Sending…";
+
   $("#teacher-form-message").textContent = "";
 
   try {
@@ -295,11 +433,17 @@ $("#teacher-form").addEventListener("submit", async e => {
         email: $("#teacher-email").value.trim()
       })
     });
-    $("#teacher-form-message").textContent = "Invitation sent. Access is pending Admin approval.";
+
+    $("#teacher-form-message").textContent =
+      "Invitation sent. Access is pending Admin approval.";
+
     await loadTeachers();
+
     setTimeout(() => $("#teacher-dialog").close(), 1200);
+
   } catch (err) {
     $("#teacher-form-message").textContent = err.message;
+
   } finally {
     b.disabled = false;
     b.textContent = "Send invitation";
@@ -315,8 +459,11 @@ async function initializePortal() {
       invitationFlowStarted = true;
       showInvitationForm();
     } else {
-      showLogin("This invitation link is invalid or has expired. Ask the administrator to send a new invitation.");
+      showLogin(
+        "This invitation link is invalid or has expired. Ask the administrator to send a new invitation."
+      );
     }
+
     return;
   }
 
