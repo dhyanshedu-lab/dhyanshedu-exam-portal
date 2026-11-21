@@ -7,7 +7,7 @@ const id=()=>crypto.randomUUID();
 async function accountTotals(env,accountId){
   const [payments,adjustments,installments]=await Promise.all([
     env.DB.prepare("SELECT COALESCE(SUM(amount_paise),0) total FROM fee_transactions WHERE fee_account_id=? AND status='recorded'").bind(accountId).first(),
-    env.DB.prepare("SELECT COALESCE(SUM(CASE WHEN adjustment_type IN ('credit','waiver','refund') THEN amount_paise ELSE -amount_paise END),0) total FROM fee_adjustments WHERE fee_account_id=?").bind(accountId).first(),
+    env.DB.prepare("SELECT COALESCE(SUM(CASE WHEN adjustment_type IN ('credit','waiver') THEN amount_paise ELSE -amount_paise END),0) total FROM fee_adjustments WHERE fee_account_id=?").bind(accountId).first(),
     env.DB.prepare("SELECT id,installment_number,description,amount_paise,due_date,status FROM fee_installments WHERE fee_account_id=? ORDER BY installment_number").bind(accountId).all()
   ]);
   return {paid_paise:Number(payments?.total||0),adjustment_credit_paise:Number(adjustments?.total||0),installments:installments.results||[]};
@@ -33,7 +33,7 @@ export async function handleFeeRequest(request,env,user,account,path,method){
     const idValue=id();
     try{
       await env.DB.prepare("INSERT INTO fee_plans(id,name,description,amount_paise,billing_frequency,is_active,pricing_scope,batch_type,curriculum_id,class_id,subject_id,batch_id,effective_from,effective_to,public_status,inclusions,terms,discount_type,discount_value) VALUES(?,?,?,?,?,1,?,?,?,?,?,?,?,?, 'draft',?,?,?,?)")
-        .bind(idValue,name,description,amount,frequency,clean(b.batch_type,20)||null,clean(b.curriculum_id,80)||null,clean(b.class_id,80)||null,clean(b.subject_id,80)||null,clean(b.batch_id,80)||null,clean(b.effective_from,20)||null,clean(b.effective_to,20)||null,clean(b.inclusions,3000)||null,clean(b.terms,3000)||null,clean(b.discount_type,20)||null,b.discount_value==null||b.discount_value===""?null:Number(b.discount_value)).run();
+        .bind(idValue,name,description,amount,frequency,scope,clean(b.batch_type,20)||null,clean(b.curriculum_id,80)||null,clean(b.class_id,80)||null,clean(b.subject_id,80)||null,clean(b.batch_id,80)||null,clean(b.effective_from,20)||null,clean(b.effective_to,20)||null,clean(b.inclusions,3000)||null,clean(b.terms,3000)||null,clean(b.discount_type,20)||null,b.discount_value==null||b.discount_value===""?null:Number(b.discount_value)).run();
     }catch(e){return fail("Could not save fee plan. Check selected class, subject, batch and migration status. "+e.message,400,request);}
     return json({success:true,id:idValue,public_status:"draft"},201,request);
   }
