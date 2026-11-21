@@ -117,6 +117,7 @@
       <a class="nav-item" data-page="exam-monitoring" data-admin-only href="#exam-monitoring"><span>▥</span> Exam monitoring</a>
       <a class="nav-item" data-page="live-classes" data-admin-only href="#live-classes"><span>◷</span> Live classes</a>
       <a class="nav-item" data-page="fees" data-admin-only href="#fees"><span>₹</span> Fee management</a>
+      <a class="nav-item" data-page="enquiries" data-admin-only href="#enquiries"><span>✉</span> Website enquiries</a>
     </nav>
     <div class="sidebar-bottom">
       <div class="secure-note"><span>●</span><div><b>Secure workspace</b><small>Role-based access enabled</small></div></div>
@@ -252,6 +253,13 @@
         </form><p class="hint">The agreed total is stored against the student and will not change if the public fee plan changes.</p><p id="fee-account-message" class="message"></p></div>
         <div class="table-card"><div class="table-heading"><h3>Student fee accounts</h3><p class="muted">Outstanding balances are calculated from the agreed fee, recorded payments and adjustments.</p></div><div class="table-scroll"><table><thead><tr><th>Student</th><th>Description</th><th>Agreed fee</th><th>Paid</th><th>Outstanding</th><th>Due date</th><th>Status</th><th>Actions</th></tr></thead><tbody id="fee-account-list"><tr><td colspan="8">Loading…</td></tr></tbody></table></div></div>
         <p id="fee-management-message" class="message"></p>
+      </section>
+      <section id="enquiries-page" class="hidden">
+        <div class="section-heading page-title"><div><h2>Website enquiries</h2><p class="muted">Manage demo-class requests received from dhyanshedu.com, assign follow-up owners and keep a history.</p></div><button id="refresh-enquiries" class="btn btn-primary" type="button">Refresh</button></div>
+        <div class="form-card"><div class="form-grid"><div><label for="enquiry-status-filter">Filter by status</label><select id="enquiry-status-filter"><option value="">All enquiries</option><option value="new">New</option><option value="contacted">Contacted</option><option value="demo_scheduled">Demo scheduled</option><option value="enrolled">Enrolled</option><option value="closed">Closed</option></select></div></div></div>
+        <div class="table-card"><div class="table-heading"><h3>Enquiry follow-up</h3><p class="muted">Update status, owner, next follow-up and internal notes. Every change is recorded.</p></div><div class="table-scroll"><table><thead><tr><th>Received</th><th>Student / Parent</th><th>Contact</th><th>Class / Board</th><th>Status</th><th>Owner</th><th>Follow-up</th><th>Notes</th><th>Save</th><th>History</th></tr></thead><tbody id="enquiries-list"><tr><td colspan="10">Loading enquiries…</td></tr></tbody></table></div></div>
+        <div id="enquiry-history-panel" class="table-card hidden"><div class="table-heading"><h3 id="enquiry-history-title">Enquiry history</h3></div><div id="enquiry-history-list"></div></div>
+        <p id="enquiries-message" class="message"></p>
       </section>
       <section id="exam-monitoring-page" class="hidden">
         <div class="section-heading page-title"><div><h2>Exam monitoring</h2><p class="muted">Monitor examinations, student attempts, pending evaluations and published results across all batches.</p></div><button id="refresh-exam-monitoring" class="btn btn-primary" type="button">Refresh</button></div>
