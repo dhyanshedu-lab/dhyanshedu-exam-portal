@@ -348,6 +348,7 @@ export default {
          const rows=await env.DB.prepare(
            "SELECT e.id,e.title,e.description,e.duration_minutes,e.total_marks,e.pass_marks,e.starts_at,e.ends_at,e.status,e.show_results_immediately,b.batch_name,ea.id attempt_id,ea.status attempt_status,ea.started_at,ea.submitted_at,r.marks_obtained,r.percentage,r.published_at FROM exams e JOIN batches b ON b.id=e.batch_id JOIN batch_students bs ON bs.batch_id=b.id AND bs.student_id=? AND bs.status='active' LEFT JOIN exam_attempts ea ON ea.exam_id=e.id AND ea.student_id=? LEFT JOIN results r ON r.attempt_id=ea.id WHERE e.status IN ('scheduled','published','closed') AND b.status='active' ORDER BY COALESCE(e.starts_at,e.created_at) DESC"
          ).bind(user.id,user.id).all();
+         const attachmentRows=await env.DB.prepare("SELECT ea.id,ea.exam_id,ea.file_name FROM exam_attachments ea JOIN exams e ON e.id=ea.exam_id JOIN batch_students bs ON bs.batch_id=e.batch_id AND bs.student_id=? AND bs.status='active' WHERE e.status IN ('scheduled','published','closed')").bind(user.id).all();
          const now=Date.now();
          const exams=(rows.results||[]).map(e=>({
            ...e,
@@ -357,7 +358,7 @@ export default {
            ),
            result_visible: !!e.published_at
          }));
-         return reply({success:true,exams},200,request);
+         return reply({success:true,exams,attachments:attachmentRows.results||[]},200,request)
        }
 
        const startMatch=path.match(/^\/api\/student\/exams\/([0-9a-f-]+)\/start$/i);
