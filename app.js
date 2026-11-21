@@ -223,6 +223,10 @@ function dashboard(p, email) {
 
   $("#welcome-title").textContent =
     p.role === "admin" ? "Admin dashboard" : `${p.role} dashboard`;
+  const eyebrow = $("#dashboard-view .topbar .eyebrow");
+  if (eyebrow) eyebrow.textContent = p.role === "admin"
+    ? "DHYANSHEDU / ADMINISTRATION"
+    : `DHYANSHEDU / ${p.role.toUpperCase()} WORKSPACE`;
 
   document.querySelectorAll("[data-admin-only]").forEach(x =>
     x.classList.toggle("hidden", p.role !== "admin")
