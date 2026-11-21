@@ -1,5 +1,6 @@
 // Cloudflare Pages static portal entry point.
 // Frontend template syntax validated; password recovery and CORS proxy enabled.
+// Cache-bust release marker: 2026-11-22 proxy routing verification.
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
 const SUPABASE_URL = "https://vxifxiuitprdafvgpojh.supabase.co";
