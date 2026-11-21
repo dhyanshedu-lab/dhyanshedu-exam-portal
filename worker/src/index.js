@@ -174,31 +174,6 @@ export default {
 
 
 
-
-     // Public website enquiry capture: intentionally unauthenticated, validated and rate-limited upstream by the proxy.
-     if (path === "/api/public/enquiries" && method === "POST") {
-       const b = await body(request);
-       const studentName = text(b.student_name,120);
-       const parentName = text(b.parent_name,120) || null;
-       const phone = text(b.phone,30);
-       const email = text(b.email,254).toLowerCase();
-       const studentClass = text(b.student_class,80);
-       const board = text(b.board,80) || null;
-       if (!studentName || !phone || !/^[+()\\d\\s-]{7,30}$/.test(phone) || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || !studentClass) {
-         return reply({error:"Enter the student name, valid phone and email, and class."},400,request);
-       }
-       const id = crypto.randomUUID();
-       try {
-         await env.DB.batch([
-           env.DB.prepare("INSERT INTO enquiries(id,student_name,parent_name,phone,email,student_class,board,status) VALUES(?,?,?,?,?,?,?,'new')").bind(id,studentName,parentName,phone,email,studentClass,board),
-           env.DB.prepare("INSERT INTO enquiry_history(id,enquiry_id,actor_id,actor_user_id,action,field_name,old_value,new_value) VALUES(?,?,NULL,NULL,'created','status',NULL,'new')").bind(crypto.randomUUID(),id)
-         ]);
-       } catch (e) {
-         return reply({error:"We could not save your enquiry right now. Please try again."},503,request);
-       }
-       return reply({success:true,message:"Thank you! Your enquiry has been received.",id},201,request);
-     }
-
      const user = await authUser(request,env);
 
      if (!user?.id) return reply({error:"Authentication required"},401,request);
@@ -225,49 +200,6 @@ export default {
        "SELECT id,role FROM users WHERE id=? AND status='approved' AND deleted_at IS NULL"
      ).bind(user.id).first();
      if (!account) return reply({error:"Account is pending approval or inactive"},403,request);
-
-
-     // Admin enquiry inbox and auditable follow-up management.
-     if (path === "/api/enquiries" && method === "GET" && account.role === "admin") {
-       const status = text(url.searchParams.get("status"),24);
-       const allowed = ["new","contacted","demo_scheduled","enrolled","closed"];
-       if (status && !allowed.includes(status)) return reply({error:"Invalid enquiry status filter."},400,request);
-       const rows = status
-         ? await env.DB.prepare("SELECT e.*,u.full_name assigned_to_name FROM enquiries e LEFT JOIN users u ON u.id=e.assigned_to WHERE e.status=? ORDER BY e.created_at DESC LIMIT 500").bind(status).all()
-         : await env.DB.prepare("SELECT e.*,u.full_name assigned_to_name FROM enquiries e LEFT JOIN users u ON u.id=e.assigned_to ORDER BY e.created_at DESC LIMIT 500").all();
-       return reply({success:true,enquiries:rows.results||[]},200,request);
-     }
-
-     const enquiryHistoryMatch = path.match(/^\\/api\\/enquiries\\/([0-9a-f-]+)\\/history$/i);
-     if (enquiryHistoryMatch && method === "GET" && account.role === "admin") {
-       const rows = await env.DB.prepare("SELECT h.id,h.action,h.field_name,h.old_value,h.new_value,h.created_at,u.full_name actor_name FROM enquiry_history h LEFT JOIN users u ON u.id=h.actor_user_id WHERE h.enquiry_id=? ORDER BY h.created_at,h.rowid").bind(enquiryHistoryMatch[1]).all();
-       return reply({success:true,history:rows.results||[]},200,request);
-     }
-
-     const enquiryMatch = path.match(/^\\/api\\/enquiries\\/([0-9a-f-]+)$/i);
-     if (enquiryMatch && method === "PATCH" && account.role === "admin") {
-       const b = await body(request), id = enquiryMatch[1];
-       const current = await env.DB.prepare("SELECT id,status,assigned_to,follow_up_at,admin_notes FROM enquiries WHERE id=?").bind(id).first();
-       if (!current) return reply({error:"Enquiry not found."},404,request);
-       const status = text(b.status,24);
-       const allowed = ["new","contacted","demo_scheduled","enrolled","closed"];
-       if (!allowed.includes(status)) return reply({error:"Invalid enquiry status."},400,request);
-       const assignedTo = text(b.assigned_to,80) || null;
-       if (assignedTo) {
-         const teacher = await env.DB.prepare("SELECT id FROM users WHERE id=? AND role='teacher' AND status='approved' AND deleted_at IS NULL").bind(assignedTo).first();
-         if (!teacher) return reply({error:"Choose an active, approved teacher."},400,request);
-       }
-       const followUp = text(b.follow_up_at,10) || null;
-       if (followUp && !/^\\d{4}-\\d{2}-\\d{2}$/.test(followUp)) return reply({error:"Follow-up date must be YYYY-MM-DD."},400,request);
-       const notes = text(b.admin_notes,2000) || null;
-       const changes = [["status",current.status,status],["assigned_to",current.assigned_to,assignedTo],["follow_up_at",current.follow_up_at,followUp],["admin_notes",current.admin_notes,notes]];
-       const statements = [env.DB.prepare("UPDATE enquiries SET status=?,assigned_to=?,follow_up_at=?,admin_notes=?,updated_at=datetime('now') WHERE id=?").bind(status,assignedTo,followUp,notes,id)];
-       for (const [field,oldValue,newValue] of changes) {
-         if ((oldValue ?? null) !== (newValue ?? null)) statements.push(env.DB.prepare("INSERT INTO enquiry_history(id,enquiry_id,actor_id,actor_user_id,action,field_name,old_value,new_value) VALUES(?,?,?,?,'updated',?,?,?)").bind(crypto.randomUUID(),id,user.id,user.id,field,oldValue ?? null,newValue ?? null));
-       }
-       await env.DB.batch(statements);
-       return reply({success:true},200,request);
-     }
 
      const feeResponse = await handleFeeRequest(request,env,user,account,path,method);
      if (feeResponse) return feeResponse;
