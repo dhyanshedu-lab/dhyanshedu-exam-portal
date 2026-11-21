@@ -54,3 +54,13 @@ td select.status-select{max-width:130px;padding:7px;border:1px solid #dce2eb;bor
 .page-title{margin-top:8px}
 @media(max-width:900px){.dashboard{grid-template-columns:210px 1fr}.form-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:680px){.dashboard{display:block}.sidebar{min-height:auto;padding:14px}.side-brand{margin:0 8px 15px}.sidebar nav{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.nav-item{padding:10px;font-size:12px}.sidebar-bottom{margin-top:15px}.secure-note{display:none}.signout{margin:12px 8px}.topbar{height:auto;min-height:80px;padding:16px 5%}.content{padding:20px 5%}.form-grid{grid-template-columns:1fr}.inline-form{display:grid;grid-template-columns:1fr}.welcome-banner{padding:22px}.banner-logo{width:65px;height:65px}}
+
+/* Teacher question-bank and exam-authoring controls */
+textarea,select{font:inherit;color:var(--ink)}
+textarea,select{width:100%;border:1px solid #dce2eb;border-radius:9px;padding:12px 14px;background:white;outline:none}
+textarea:focus,select:focus{border-color:#6685b3;box-shadow:0 0 0 3px #6685b322}
+textarea{resize:vertical;min-height:76px;line-height:1.5}
+.form-grid label{display:block;font-size:12px;font-weight:700;margin:0 0 7px}
+.form-grid .full{grid-column:1/-1;width:100%;margin-top:0}
+.form-grid small{display:block;margin-top:7px;font-size:11px}
+.form-grid select[multiple]{min-height:150px}
