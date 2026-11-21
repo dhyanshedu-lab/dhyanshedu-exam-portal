@@ -200,6 +200,65 @@ export default {
 
 
 
+     const account = await env.DB.prepare(
+       "SELECT id,role FROM users WHERE id=? AND status='approved' AND deleted_at IS NULL"
+     ).bind(user.id).first();
+     if (!account) return reply({error:"Account is pending approval or inactive"},403,request);
+
+     // Read-only teacher/student workspace APIs. All records are scoped to the signed-in user.
+     if (account.role === "teacher" || account.role === "student") {
+       const isTeacher = account.role === "teacher";
+
+       if (path === "/api/workspace" && method === "GET") {
+         const [batches, assignments, materials, liveClasses] = await Promise.all([
+           isTeacher
+             ? env.DB.prepare("SELECT COUNT(*) total FROM batch_teachers bt JOIN batches b ON b.id=bt.batch_id WHERE bt.teacher_id=? AND b.status='active'").bind(user.id).first()
+             : env.DB.prepare("SELECT COUNT(*) total FROM batch_students bs JOIN batches b ON b.id=bs.batch_id WHERE bs.student_id=? AND bs.status='active' AND b.status='active'").bind(user.id).first(),
+           isTeacher
+             ? env.DB.prepare("SELECT COUNT(*) total FROM assignments a WHERE a.status='published' AND (a.teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=a.batch_id AND bt.teacher_id=?))").bind(user.id,user.id).first()
+             : env.DB.prepare("SELECT COUNT(*) total FROM assignments a WHERE a.status='published' AND (EXISTS (SELECT 1 FROM batch_students bs WHERE bs.batch_id=a.batch_id AND bs.student_id=? AND bs.status='active') OR EXISTS (SELECT 1 FROM batch_students bs JOIN batches b ON b.id=bs.batch_id WHERE bs.student_id=? AND bs.status='active' AND b.class_id=a.class_id))").bind(user.id,user.id).first(),
+           isTeacher
+             ? env.DB.prepare("SELECT COUNT(*) total FROM study_materials sm WHERE sm.deleted_at IS NULL AND sm.teacher_id=?").bind(user.id).first()
+             : env.DB.prepare("SELECT COUNT(*) total FROM study_materials sm WHERE sm.deleted_at IS NULL AND (sm.visibility='all_students' OR EXISTS (SELECT 1 FROM batch_students bs WHERE bs.student_id=? AND bs.status='active' AND bs.batch_id=sm.batch_id))").bind(user.id).first(),
+           isTeacher
+             ? env.DB.prepare("SELECT COUNT(*) total FROM live_classes lc WHERE lc.teacher_id=? AND lc.status IN ('scheduled','live')").bind(user.id).first()
+             : env.DB.prepare("SELECT COUNT(*) total FROM live_classes lc WHERE lc.status IN ('scheduled','live') AND (EXISTS (SELECT 1 FROM batch_students bs WHERE bs.student_id=? AND bs.status='active' AND bs.batch_id=lc.batch_id) OR (lc.batch_id IS NULL AND EXISTS (SELECT 1 FROM batch_students bs JOIN batches b ON b.id=bs.batch_id WHERE bs.student_id=? AND bs.status='active' AND b.class_id=lc.class_id)))").bind(user.id,user.id).first()
+         ]);
+         return reply({success:true,role:account.role,stats:{
+           batches:batches?.total||0,assignments:assignments?.total||0,
+           materials:materials?.total||0,upcoming_classes:liveClasses?.total||0
+         }},200,request);
+       }
+
+       if (path === "/api/my/batches" && method === "GET") {
+         const result = isTeacher
+           ? await env.DB.prepare("SELECT b.id,b.batch_name,b.batch_type,b.status,b.class_id,b.subject_id,c.class_name,s.subject_name FROM batch_teachers bt JOIN batches b ON b.id=bt.batch_id LEFT JOIN classes c ON c.id=b.class_id LEFT JOIN subjects s ON s.id=b.subject_id WHERE bt.teacher_id=? ORDER BY b.batch_name").bind(user.id).all()
+           : await env.DB.prepare("SELECT b.id,b.batch_name,b.batch_type,b.status,b.class_id,b.subject_id,c.class_name,s.subject_name,bs.enrolled_at FROM batch_students bs JOIN batches b ON b.id=bs.batch_id LEFT JOIN classes c ON c.id=b.class_id LEFT JOIN subjects s ON s.id=b.subject_id WHERE bs.student_id=? AND bs.status='active' ORDER BY b.batch_name").bind(user.id).all();
+         return reply({success:true,batches:result.results||[]},200,request);
+       }
+
+       if (path === "/api/my/assignments" && method === "GET") {
+         const result = isTeacher
+           ? await env.DB.prepare("SELECT DISTINCT a.id,a.title,a.instructions,a.due_at,a.max_marks,a.status,a.created_at,c.class_name,s.subject_name,b.batch_name FROM assignments a LEFT JOIN classes c ON c.id=a.class_id LEFT JOIN subjects s ON s.id=a.subject_id LEFT JOIN batches b ON b.id=a.batch_id WHERE a.status IN ('draft','published','closed') AND (a.teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=a.batch_id AND bt.teacher_id=?)) ORDER BY a.due_at").bind(user.id,user.id).all()
+           : await env.DB.prepare("SELECT DISTINCT a.id,a.title,a.instructions,a.due_at,a.max_marks,a.status,a.created_at,c.class_name,s.subject_name,b.batch_name,sub.status submission_status,sub.submitted_at,sub.marks_awarded,sub.teacher_feedback FROM assignments a LEFT JOIN classes c ON c.id=a.class_id LEFT JOIN subjects s ON s.id=a.subject_id LEFT JOIN batches b ON b.id=a.batch_id LEFT JOIN assignment_submissions sub ON sub.assignment_id=a.id AND sub.student_id=? WHERE a.status='published' AND (EXISTS (SELECT 1 FROM batch_students bs WHERE bs.batch_id=a.batch_id AND bs.student_id=? AND bs.status='active') OR EXISTS (SELECT 1 FROM batch_students bs JOIN batches eb ON eb.id=bs.batch_id WHERE bs.student_id=? AND bs.status='active' AND eb.class_id=a.class_id)) ORDER BY a.due_at").bind(user.id,user.id,user.id).all();
+         return reply({success:true,assignments:result.results||[]},200,request);
+       }
+
+       if (path === "/api/my/materials" && method === "GET") {
+         const result = isTeacher
+           ? await env.DB.prepare("SELECT id,title,description,class_id,subject_id,batch_id,file_name,mime_type,file_size_bytes,created_at FROM study_materials WHERE teacher_id=? AND deleted_at IS NULL ORDER BY created_at DESC").bind(user.id).all()
+           : await env.DB.prepare("SELECT DISTINCT sm.id,sm.title,sm.description,sm.class_id,sm.subject_id,sm.batch_id,sm.file_name,sm.mime_type,sm.file_size_bytes,sm.created_at FROM study_materials sm WHERE sm.deleted_at IS NULL AND (sm.visibility='all_students' OR EXISTS (SELECT 1 FROM batch_students bs WHERE bs.student_id=? AND bs.status='active' AND bs.batch_id=sm.batch_id)) ORDER BY sm.created_at DESC").bind(user.id).all();
+         return reply({success:true,materials:result.results||[]},200,request);
+       }
+
+       if (path === "/api/my/live-classes" && method === "GET") {
+         const result = isTeacher
+           ? await env.DB.prepare("SELECT id,title,description,batch_id,class_id,subject_id,meeting_provider,meeting_url,starts_at,ends_at,status FROM live_classes WHERE teacher_id=? ORDER BY starts_at").bind(user.id).all()
+           : await env.DB.prepare("SELECT DISTINCT lc.id,lc.title,lc.description,lc.batch_id,lc.class_id,lc.subject_id,lc.meeting_provider,lc.meeting_url,lc.starts_at,lc.ends_at,lc.status FROM live_classes lc WHERE lc.status<>'cancelled' AND (EXISTS (SELECT 1 FROM batch_students bs WHERE bs.student_id=? AND bs.status='active' AND bs.batch_id=lc.batch_id) OR (lc.batch_id IS NULL AND EXISTS (SELECT 1 FROM batch_students bs JOIN batches b ON b.id=bs.batch_id WHERE bs.student_id=? AND bs.status='active' AND b.class_id=lc.class_id))) ORDER BY lc.starts_at").bind(user.id,user.id).all();
+         return reply({success:true,live_classes:result.results||[]},200,request);
+       }
+     }
+
      const admin = await adminUser(user.id,env);
 
      if (!admin) return reply({error:"Admin access required"},403,request);
