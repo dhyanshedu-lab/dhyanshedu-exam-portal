@@ -259,6 +259,113 @@ export default {
        }
      }
 
+     // Teacher question bank and batch exam authoring. These routes run before the Admin-only gate.
+     if (account.role === "teacher") {
+       if (path === "/api/teacher/questions" && method === "GET") {
+         const rows = await env.DB.prepare(
+           "SELECT q.id,q.question_type,q.question_text,q.topic,q.difficulty,q.default_marks,q.subject_id,q.class_id,q.created_at,(SELECT COUNT(*) FROM question_options qo WHERE qo.question_id=q.id) option_count FROM questions q WHERE q.teacher_id=? AND q.status='active' ORDER BY q.created_at DESC"
+         ).bind(user.id).all();
+         return reply({success:true,questions:rows.results||[]},200,request);
+       }
+
+       if (path === "/api/teacher/questions" && method === "POST") {
+         const b = await body(request);
+         const type = text(b.question_type,30);
+         const questionText = text(b.question_text,8000);
+         const topic = text(b.topic,160) || null;
+         const difficulty = text(b.difficulty,20) || "medium";
+         const marks = Number(b.default_marks ?? 1);
+         const subjectId = text(b.subject_id,32);
+         const classId = text(b.class_id,32) || null;
+         const allowedTypes = ["mcq","multiple_select","numerical","short_answer","long_answer"];
+         if (!allowedTypes.includes(type) || !questionText || !Number.isFinite(marks) || marks<=0 || !subjectId || !["easy","medium","hard"].includes(difficulty)) {
+           return reply({error:"Enter valid question text, type, subject, difficulty and positive marks."},400,request);
+         }
+         const assignment = await env.DB.prepare(
+           "SELECT 1 ok FROM teacher_assignments WHERE teacher_id=? AND subject_id=? AND (? IS NULL OR class_id=?) UNION SELECT 1 FROM batch_teachers bt JOIN batches b ON b.id=bt.batch_id WHERE bt.teacher_id=? AND b.subject_id=? AND (? IS NULL OR b.class_id=?) LIMIT 1"
+         ).bind(user.id,subjectId,classId,classId,user.id,subjectId,classId,classId).first();
+         if (!assignment) return reply({error:"You can create questions only for a subject/class assigned to you."},403,request);
+
+         const options = Array.isArray(b.options) ? b.options : [];
+         if ((type==="mcq" || type==="multiple_select") &&
+             (options.length < 2 || options.length > 8 ||
+              options.some(o=>!text(o.option_text,1000)) ||
+              options.filter(o=>o.is_correct===true).length < 1 ||
+              (type==="mcq" && options.filter(o=>o.is_correct===true).length !== 1))) {
+           return reply({error:type==="mcq" ? "MCQ questions need 2–8 options and exactly one correct answer." : "Multiple-select questions need 2–8 options and at least one correct answer."},400,request);
+         }
+         if (type!=="mcq" && type!=="multiple_select" && options.length) return reply({error:"Options are supported only for MCQ and multiple-select questions."},400,request);
+
+         const id=crypto.randomUUID();
+         const statements=[
+           env.DB.prepare("INSERT INTO questions(id,subject_id,class_id,teacher_id,topic,difficulty,question_type,question_text,explanation,default_marks,status) VALUES(?,?,?,?,?,?,?,?,?,?, 'active')")
+             .bind(id,subjectId,classId,user.id,topic,difficulty,type,questionText,text(b.explanation,4000)||null,marks)
+         ];
+         options.forEach((o,i)=>statements.push(
+           env.DB.prepare("INSERT INTO question_options(id,question_id,option_label,option_text,is_correct,sort_order) VALUES(?,?,?,?,?,?)")
+             .bind(crypto.randomUUID(),id,String.fromCharCode(65+i),text(o.option_text,1000),o.is_correct===true?1:0,i)
+         ));
+         await env.DB.batch(statements);
+         return reply({success:true,question_id:id},201,request);
+       }
+
+       if (path === "/api/teacher/exams" && method === "GET") {
+         const rows=await env.DB.prepare(
+           "SELECT DISTINCT e.id,e.title,e.description,e.batch_id,e.duration_minutes,e.total_marks,e.pass_marks,e.starts_at,e.ends_at,e.status,e.created_at,b.batch_name,(SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id=e.id) question_count FROM exams e LEFT JOIN batches b ON b.id=e.batch_id WHERE e.created_by=? ORDER BY e.created_at DESC"
+         ).bind(user.id).all();
+         return reply({success:true,exams:rows.results||[]},200,request);
+       }
+
+       if (path === "/api/teacher/exams" && method === "POST") {
+         const b=await body(request);
+         const title=text(b.title,180), batchId=text(b.batch_id,64);
+         const duration=Number(b.duration_minutes);
+         const passMarks=b.pass_marks===""||b.pass_marks==null?null:Number(b.pass_marks);
+         const startsAt=text(b.starts_at,40)||null, endsAt=text(b.ends_at,40)||null;
+         const questionIds=Array.isArray(b.question_ids)?[...new Set(b.question_ids.map(x=>text(x,64)).filter(Boolean))]:[];
+         if (!title || !batchId || !Number.isInteger(duration) || duration<1 || duration>600 || !questionIds.length || questionIds.length>100 ||
+             (passMarks!==null && (!Number.isFinite(passMarks)||passMarks<0)) ||
+             (startsAt && endsAt && new Date(endsAt)<=new Date(startsAt))) {
+           return reply({error:"Enter a title, assigned batch, valid duration, at least one question and a valid schedule."},400,request);
+         }
+         const batch=await env.DB.prepare(
+           "SELECT b.id,b.class_id,b.subject_id FROM batches b JOIN batch_teachers bt ON bt.batch_id=b.id WHERE b.id=? AND bt.teacher_id=? AND b.status='active'"
+         ).bind(batchId,user.id).first();
+         if(!batch) return reply({error:"Select an active batch assigned to you."},403,request);
+         const marksRows=await env.DB.prepare(
+           `SELECT id,default_marks FROM questions WHERE teacher_id=? AND status='active' AND id IN (${questionIds.map(()=>"?").join(",")}) AND (class_id IS NULL OR class_id=?) AND (subject_id IS NULL OR subject_id=?)`
+         ).bind(user.id,...questionIds,batch.class_id,batch.subject_id).all();
+         if((marksRows.results||[]).length!==questionIds.length) return reply({error:"One or more selected questions are unavailable or do not match this batch."},400,request);
+         const totalMarks=marksRows.results.reduce((sum,q)=>sum+Number(q.default_marks||0),0);
+         if(passMarks!==null && passMarks>totalMarks) return reply({error:"Pass marks cannot exceed total marks."},400,request);
+         const id=crypto.randomUUID();
+         const status=startsAt && new Date(startsAt)>new Date() ? "scheduled" : "draft";
+         const statements=[
+           env.DB.prepare("INSERT INTO exams(id,title,description,class_id,subject_id,batch_id,created_by,duration_minutes,total_marks,pass_marks,starts_at,ends_at,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")
+             .bind(id,title,text(b.description,4000)||null,batch.class_id,batch.subject_id,batchId,user.id,duration,totalMarks,passMarks,startsAt,endsAt,status),
+           ...questionIds.map((qid,i)=>{
+             const q=marksRows.results.find(x=>x.id===qid);
+             return env.DB.prepare("INSERT INTO exam_questions(id,exam_id,question_id,marks,negative_marks,sort_order) VALUES(?,?,?, ?,0,?)")
+               .bind(crypto.randomUUID(),id,qid,Number(q.default_marks||1),i);
+           })
+         ];
+         await env.DB.batch(statements);
+         return reply({success:true,exam_id:id,status,total_marks:totalMarks},201,request);
+       }
+
+       const publishMatch=path.match(/^\/api\/teacher\/exams\/([0-9a-f-]+)\/publish$/i);
+       if(publishMatch && method==="POST"){
+         const exam=await env.DB.prepare("SELECT id,status,starts_at,ends_at,(SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id=exams.id) question_count FROM exams WHERE id=? AND created_by=?").bind(publishMatch[1],user.id).first();
+         if(!exam) return reply({error:"Exam not found."},404,request);
+         if(!exam.question_count) return reply({error:"Add at least one question before publishing."},400,request);
+         if(exam.status==="archived"||exam.status==="closed") return reply({error:"This exam cannot be published."},409,request);
+         if(exam.ends_at && new Date(exam.ends_at)<=new Date()) return reply({error:"The exam end time is in the past."},400,request);
+         const nextStatus=exam.starts_at && new Date(exam.starts_at)>new Date() ? "scheduled" : "published";
+         await env.DB.prepare("UPDATE exams SET status=?,updated_at=datetime('now') WHERE id=? AND created_by=?").bind(nextStatus,exam.id,user.id).run();
+         return reply({success:true,status:nextStatus},200,request);
+       }
+     }
+
      const admin = await adminUser(user.id,env);
 
      if (!admin) return reply({error:"Admin access required"},403,request);
