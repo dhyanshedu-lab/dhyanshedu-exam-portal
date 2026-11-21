@@ -259,6 +259,28 @@ export default {
        }
      }
 
+     // Published student results. Correct answers and teacher feedback are exposed only after publication.
+     if(account.role==="student"){
+       const resultMatch=path.match(/^\/api\/student\/results\/([0-9a-f-]+)$/i);
+       if(resultMatch && method==="GET"){
+         const result=await env.DB.prepare(
+           "SELECT r.id result_id,r.attempt_id,r.exam_id,r.total_marks,r.marks_obtained,r.percentage,r.published_at,e.title exam_title,e.pass_marks,ea.submitted_at FROM results r JOIN exams e ON e.id=r.exam_id JOIN exam_attempts ea ON ea.id=r.attempt_id JOIN batches b ON b.id=e.batch_id JOIN batch_students bs ON bs.batch_id=b.id AND bs.student_id=r.student_id AND bs.status='active' WHERE r.attempt_id=? AND r.student_id=? AND r.published_at IS NOT NULL"
+         ).bind(resultMatch[1],user.id).first();
+         if(!result) return reply({error:"Published result not found."},404,request);
+         const rows=await env.DB.prepare(
+           "SELECT eq.id exam_question_id,q.id question_id,eq.marks,q.question_type,q.question_text,q.topic,sa.answer_text,sa.selected_option_ids,sa.is_correct,sa.marks_awarded,sa.teacher_feedback FROM exam_questions eq JOIN questions q ON q.id=eq.question_id LEFT JOIN student_answers sa ON sa.exam_question_id=eq.id AND sa.attempt_id=? WHERE eq.exam_id=? ORDER BY eq.sort_order"
+         ).bind(result.attempt_id,result.exam_id).all();
+         const options=await env.DB.prepare(
+           "SELECT qo.question_id,qo.id option_id,qo.option_label,qo.option_text,qo.is_correct FROM exam_questions eq JOIN question_options qo ON qo.question_id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.sort_order,qo.sort_order"
+         ).bind(result.exam_id).all();
+         const questions=(rows.results||[]).map(q=>({
+           ...q,selected_option_ids:JSON.parse(q.selected_option_ids||"[]"),
+           options:(options.results||[]).filter(o=>o.question_id===q.question_id).map(o=>({id:o.option_id,label:o.option_label,text:o.option_text,is_correct:!!o.is_correct}))
+         }));
+         return reply({success:true,result,questions},200,request);
+       }
+     }
+
      // Student exam centre. Correct answers are never returned by read endpoints.
      if (account.role === "student") {
        if (path === "/api/student/exams" && method === "GET") {
