@@ -116,8 +116,7 @@ function roleWorkspaceSection() {
     <div class="table-card"><div class="table-heading"><h3>Study materials</h3></div>
       <div class="table-scroll"><table><thead><tr><th>Title</th><th>File</th><th>Description</th><th>Added</th></tr></thead><tbody id="my-materials-list"><tr><td colspan="4">Loading…</td></tr></tbody></table></div>
     </div>
-    <div class="table-card"><div class="table-heading"><h3>Classes and meeting links</h3></div>
-      <div class="table-scroll"><table><thead><tr><th>Class</th><th>Batch</th><th>Schedule</th><th>Status</th><th>Meeting</th></tr></thead><tbody id="my-live-list"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
+    <div class="table-card"><div class="table-heading"><h3>Classes and meeting links</h3><p class="muted">Teachers can update class status and record attendance. Students can join their scheduled lessons.</p></div><div class="table-scroll"><table><thead><tr><th>Class</th><th>Batch</th><th>Schedule</th><th>Status</th><th>Meeting</th><th>Teacher actions</th></tr></thead><tbody id="my-live-list"><tr><td colspan="6">Loading…</td></tr></tbody></table></div>
     </div>`;
   $("#dashboard-view .content").append(section);
   if (profile?.role === "teacher") {
@@ -578,11 +577,7 @@ async function loadRoleWorkspace(role) {
       item.created_at ? new Date(item.created_at).toLocaleDateString() : "—"
     ]), "No study materials available.", 4);
 
-    addWorkspaceRow($("#my-live-list"), (live.live_classes || []).map(item => [
-      item.title, item.batch_id || item.class_id,
-      item.starts_at ? new Date(item.starts_at).toLocaleString() : "—",
-      item.status, safeMeetingLink(item.meeting_url)
-    ]), "No scheduled classes available.", 5);
+    const liveBody=$("#my-live-list");liveBody.replaceChildren();(live.live_classes||[]).forEach(item=>{const tr=liveBody.insertRow();[item.title,item.batch_name||item.batch_id||item.class_id,item.starts_at?new Date(item.starts_at).toLocaleString():"—",item.status].forEach(v=>{const td=tr.insertCell();td.textContent=v??"—";});const meeting=tr.insertCell();meeting.append(safeMeetingLink(item.meeting_url));const actions=tr.insertCell();if(role==="teacher"){const attendance=document.createElement("button");attendance.className="btn btn-secondary btn-small";attendance.textContent="Mark attendance";attendance.addEventListener("click",()=>openTeacherAttendance(item.id,item.title));actions.append(attendance);const status=document.createElement("select");status.className="status-select";status.style.marginLeft="5px";[["scheduled","Scheduled"],["live","Live"],["completed","Completed"],["cancelled","Cancelled"]].forEach(([v,l])=>{const o=document.createElement("option");o.value=v;o.textContent=l;status.append(o);});status.value=item.status;status.addEventListener("change",async()=>{try{await api("/api/teacher/live-classes/"+encodeURIComponent(item.id)+"/status",{method:"PATCH",body:JSON.stringify({status:status.value})});await loadRoleWorkspace("teacher");}catch(e){alert(e.message);status.value=item.status;}});actions.append(status);}else actions.textContent=item.teacher_name||"—";});if(!liveBody.children.length){const tr=liveBody.insertRow(),td=tr.insertCell();td.colSpan=6;td.textContent="No scheduled classes available."; }
 
     if (role === "teacher") {
       teacherWorkspaceBatches = batches.batches || [];
@@ -1069,6 +1064,17 @@ document.addEventListener("click",e=>{
   if(e.target.id==="refresh-exam-monitoring")loadExamMonitoring();
 });
 
+async function loadAdminLiveClasses(){
+ const body=$("#admin-live-class-list");if(!body)return;body.innerHTML='<tr><td colspan="9">Loading classes…</td></tr>';
+ try{const d=await api("/api/admin/live-classes");
+ const fill=(el,items,label)=>{el.replaceChildren();const first=document.createElement("option");first.value="";first.textContent=label;el.append(first);items.forEach(x=>{const o=document.createElement("option");o.value=x.id;o.textContent=label==="Select batch"?x.batch_name:x.full_name;el.append(o);});};
+ fill($("#live-batch"),d.batches||[],"Select batch");fill($("#live-teacher"),d.teachers||[],"Select teacher");body.replaceChildren();
+ (d.live_classes||[]).forEach(item=>{const tr=body.insertRow();[item.title,item.batch_name,item.teacher_name,new Date(item.starts_at).toLocaleString()+" – "+new Date(item.ends_at).toLocaleTimeString(),item.status,item.enrolled_students,item.marked_students,item.present_students].forEach(v=>{const td=tr.insertCell();td.textContent=v??"—";});const td=tr.insertCell(),btn=document.createElement("button");btn.className="btn btn-secondary btn-small";btn.textContent="View attendance";btn.addEventListener("click",()=>loadAdminLiveAttendance(item.id,item.title));td.append(btn);});
+ if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=9;td.textContent="No online classes scheduled yet.";}
+ }catch(e){body.replaceChildren();const tr=body.insertRow(),td=tr.insertCell();td.colSpan=9;td.textContent=e.message;}
+}
+async function loadAdminLiveAttendance(id,title){const panel=$("#admin-live-attendance"),body=$("#admin-live-attendance-list");panel.classList.remove("hidden");$("#admin-live-attendance-title").textContent="Attendance · "+title;body.innerHTML="<tr><td colspan=\"4\">Loading…</td></tr>";try{const d=await api("/api/admin/live-classes/"+encodeURIComponent(id)+"/attendance");body.replaceChildren();(d.students||[]).forEach(s=>{const tr=body.insertRow();[s.student_name,s.email,s.attendance_status||"Not marked",s.marked_by_name||"—"].forEach(v=>{const td=tr.insertCell();td.textContent=v;});});if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=4;td.textContent="No active students enrolled in this batch.";}}catch(e){body.textContent=e.message;}}
+async function openTeacherAttendance(id,title){let panel=$("#teacher-attendance-panel");if(!panel){panel=document.createElement("div");panel.id="teacher-attendance-panel";panel.className="form-card";$("#my-live-list").closest(".table-card").after(panel);}panel.innerHTML="<h3>Attendance · "+title+"</h3><p class=\"muted\">Choose Present, Late, Absent or Excused for each actively enrolled student.</p><div class=\"table-scroll\"><table><thead><tr><th>Student</th><th>Email</th><th>Attendance</th></tr></thead><tbody id=\"teacher-attendance-roster\"><tr><td colspan=\"3\">Loading…</td></tr></tbody></table></div><button id=\"save-teacher-attendance\" class=\"btn btn-primary\" type=\"button\" data-class-id=\""+id+"\">Save attendance</button><p id=\"teacher-attendance-message\" class=\"message\"></p>";try{const d=await api("/api/teacher/live-classes/"+encodeURIComponent(id)+"/attendance"),body=$("#teacher-attendance-roster");body.replaceChildren();(d.students||[]).forEach(s=>{const tr=body.insertRow();[s.student_name,s.email].forEach(v=>{const td=tr.insertCell();td.textContent=v||"—";});const td=tr.insertCell(),sel=document.createElement("select");sel.className="status-select";sel.dataset.studentId=s.student_id;[["","Select status"],["present","Present"],["late","Late"],["absent","Absent"],["excused","Excused"]].forEach(([v,l])=>{const o=document.createElement("option");o.value=v;o.textContent=l;sel.append(o);});sel.value=s.attendance_status||"";td.append(sel);});if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=3;td.textContent="No active students enrolled in this batch.";}}catch(e){panel.textContent=e.message;}}
 async function loadAdminPage(name) {
   try {
     if (name==="classes") await loadClasses();
@@ -1078,6 +1084,7 @@ async function loadAdminPage(name) {
     if (name==="students") await loadStudents();
     if (name==="teachers") await loadTeachers();
     if (name==="exam-monitoring") await loadExamMonitoring();
+    if (name==="live-classes") await loadAdminLiveClasses();
   } catch(error) { $("#dashboard-message").textContent=error.message; }
 }
 
@@ -1407,3 +1414,6 @@ supabase.auth.onAuthStateChange((event) => {
 });
 
 initializePortal();
+
+document.addEventListener("submit",async e=>{if(e.target.id!=="admin-live-class-form")return;e.preventDefault();const btn=$("#save-live-class"),msg=$("#live-class-message");btn.disabled=true;msg.textContent="Scheduling class…";try{await api("/api/admin/live-classes",{method:"POST",body:JSON.stringify({title:$("#live-title").value.trim(),description:$("#live-description").value.trim(),batch_id:$("#live-batch").value,teacher_id:$("#live-teacher").value,meeting_provider:$("#live-provider").value,meeting_url:$("#live-url").value.trim(),starts_at:new Date($("#live-start").value).toISOString(),ends_at:new Date($("#live-end").value).toISOString()})});e.target.reset();msg.textContent="Class scheduled. Enrolled students can now see the meeting link.";await loadAdminLiveClasses();}catch(err){msg.textContent=err.message;}finally{btn.disabled=false;}});
+document.addEventListener("click",async e=>{if(e.target.id==="refresh-live-classes")await loadAdminLiveClasses();if(e.target.id==="save-teacher-attendance"){const btn=e.target,rows=Array.from($("#teacher-attendance-roster").querySelectorAll("select[data-student-id]")),attendance=rows.map(x=>({student_id:x.dataset.studentId,attendance_status:x.value}));if(attendance.some(x=>!x.attendance_status)){alert("Select an attendance status for every student before saving.");return;}btn.disabled=true;try{const d=await api("/api/teacher/live-classes/"+encodeURIComponent(btn.dataset.classId)+"/attendance",{method:"POST",body:JSON.stringify({attendance})});$("#teacher-attendance-message").textContent="Attendance saved for "+d.saved+" students.";}catch(err){alert(err.message);}finally{btn.disabled=false;}}});
