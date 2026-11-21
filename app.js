@@ -1194,6 +1194,11 @@ async function loadAdminFees(){
     showMessage("fee-management-message","");
   }catch(e){showMessage("fee-management-message",e.message);plansBody.innerHTML='<tr><td colspan="7">Could not load fee plans.</td></tr>';accountsBody.innerHTML='<tr><td colspan="8">Could not load fee accounts.</td></tr>';}
 }
+async function printPortalReceipt(receiptId){
+  const win=window.open("about:blank","_blank");
+  if(!win){alert("Allow pop-ups to print the receipt.");return;}
+  try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw new Error("Please sign in again.");const response=await fetch(API_URL+"/api/fee-receipts/"+encodeURIComponent(receiptId),{headers:{Authorization:"Bearer "+session.access_token}});if(!response.ok){const d=await response.json().catch(()=>({}));throw new Error(d.error||"Receipt could not be loaded.");}win.document.open();win.document.write(await response.text());win.document.close();}catch(e){win.close();alert(e.message);}
+}
 async function loadStudentFees(){
   const root=$("#student-fee-accounts");if(!root)return;root.textContent="Loading fee information…";
   try{
@@ -1205,7 +1210,7 @@ async function loadStudentFees(){
       heading.append(h,sub);card.append(heading);
       const wrap=document.createElement("div");wrap.className="table-scroll";const table=document.createElement("table");table.innerHTML="<thead><tr><th>Payment date</th><th>Method</th><th>Amount</th><th>Receipt</th><th>Reference</th></tr></thead>";
       const tbody=document.createElement("tbody");
-      (a.transactions||[]).forEach(t=>{const tr=tbody.insertRow();[t.received_at?new Date(t.received_at).toLocaleDateString():"—",t.payment_method,rupees(t.amount_paise),t.receipt_number||"—",t.transaction_reference||"—"].forEach(v=>addCell(tr,v));});
+      (a.transactions||[]).forEach(t=>{const tr=tbody.insertRow();[t.received_at?new Date(t.received_at).toLocaleDateString():"—",t.payment_method,rupees(t.amount_paise)].forEach(v=>addCell(tr,v));const receiptCell=tr.insertCell();if(t.receipt_id){const btn=document.createElement("button");btn.className="btn btn-secondary btn-small";btn.textContent="Print "+(t.receipt_number||"receipt");btn.addEventListener("click",()=>printPortalReceipt(t.receipt_id));receiptCell.append(btn);}else receiptCell.textContent=t.receipt_number||"—";addCell(tr,t.transaction_reference||"—");});
       if(!tbody.children.length){const tr=tbody.insertRow(),td=tr.insertCell();td.colSpan=5;td.textContent="No payments recorded yet.";}
       table.append(tbody);wrap.append(table);card.append(wrap);
       if((a.installments||[]).length){const list=document.createElement("p");list.className="hint";list.textContent="Instalments: "+a.installments.map(x=>x.description+" · "+rupees(x.amount_paise)+" · due "+x.due_date).join(" | ");card.append(list);}
