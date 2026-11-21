@@ -47,6 +47,7 @@ export async function handleEnquiryRequest(request, env, user, account, path, me
     const email = clean(b.email, 254).toLowerCase();
     const learningMode = clean(b.learning_mode, 20);
     if (!studentName || !validPhone(phone)) return json(request, { error: "Enter the student's name and a valid contact number." }, 400);
+    if (b.privacy_accepted !== true) return json(request, { error: "Please acknowledge the privacy notice before submitting." }, 400);
     if (!validEmail(email)) return json(request, { error: "Enter a valid email address." }, 400);
     if (learningMode && !["group", "one_to_one"].includes(learningMode)) return json(request, { error: "Choose group or one-to-one learning." }, 400);
 
@@ -101,12 +102,12 @@ export async function handleEnquiryRequest(request, env, user, account, path, me
   match = path.match(/^\/api\/admin\/enquiries\/([0-9a-f-]+)$/i);
   if (match && method === "PATCH") {
     const b = await readBody(request);
-    const enquiry = await env.DB.prepare("SELECT id,status,assigned_to FROM enquiries WHERE id=?").bind(match[1]).first();
+    const enquiry = await env.DB.prepare("SELECT id,status,assigned_to,next_follow_up_at FROM enquiries WHERE id=?").bind(match[1]).first();
     if (!enquiry) return json(request, { error: "Enquiry not found." }, 404);
     const allowed = ["new","contacted","interested","follow_up_required","converted","not_interested","closed"];
     const status = b.status === undefined ? enquiry.status : clean(b.status, 40);
     const owner = b.assigned_to === undefined ? enquiry.assigned_to : (clean(b.assigned_to, 64) || null);
-    const followUp = b.next_follow_up_at === undefined ? null : (clean(b.next_follow_up_at, 40) || null);
+    const followUp = b.next_follow_up_at === undefined ? enquiry.next_follow_up_at : (clean(b.next_follow_up_at, 40) || null);
     if (!allowed.includes(status)) return json(request, { error: "Invalid enquiry status." }, 400);
     if (owner) {
       const staff = await env.DB.prepare("SELECT id FROM users WHERE id=? AND role IN ('admin','teacher') AND status='approved' AND deleted_at IS NULL").bind(owner).first();
