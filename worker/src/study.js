@@ -1,5 +1,5 @@
 const txt=(v,n=160)=>String(v??"").trim().slice(0,n);
-const json=(data,status,request)=>{const origin=request.headers.get("Origin")||"";const headers={"Content-Type":"application/json","Cache-Control":"no-store","Vary":"Origin"};if(["https://dhyanshedu-lab.github.io","https://dhyanshedu-exam-portal.dhyanshedu.workers.dev"].includes(origin))headers["Access-Control-Allow-Origin"]=origin;return new Response(JSON.stringify(data),{status,headers});};
+const json=(data,status,request)=>{const origin=request.headers.get("Origin")||"";const headers={"Content-Type":"application/json","Cache-Control":"no-store","Vary":"Origin"};if(["https://dhyanshedu-lab.github.io","https://dhyanshedu-exam-portal.dhyanshedu.workers.dev","https://dhyanshedu-exam-portal.pages.dev","https://dhyanshedu.com","https://www.dhyanshedu.com"].includes(origin))headers["Access-Control-Allow-Origin"]=origin;return new Response(JSON.stringify(data),{status,headers});};
 const fail=(message,status=400,request)=>json({error:message},status,request);
 const bucketKey=()=> "study-files/"+crypto.randomUUID();
 const fileTypes=["application/pdf","image/jpeg","image/png","image/webp","text/plain","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.presentationml.presentation","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
@@ -17,7 +17,7 @@ async function download(env,request,row){
   if(!env.STUDY_FILES_BUCKET)return fail("R2 file storage is not configured.",503,request);
   const obj=await env.STUDY_FILES_BUCKET.get(row.r2_object_key);if(!obj)return fail("File is no longer available.",404,request);
   const origin=request.headers.get("Origin")||"",headers={"Content-Type":row.mime_type||"application/octet-stream","Content-Disposition":"attachment; filename*=UTF-8''"+encodeURIComponent(row.file_name),"Cache-Control":"private, no-store","Vary":"Origin"};
-  if(["https://dhyanshedu-lab.github.io","https://dhyanshedu-exam-portal.dhyanshedu.workers.dev"].includes(origin))headers["Access-Control-Allow-Origin"]=origin;
+  if(["https://dhyanshedu-lab.github.io","https://dhyanshedu-exam-portal.dhyanshedu.workers.dev","https://dhyanshedu-exam-portal.pages.dev","https://dhyanshedu.com","https://www.dhyanshedu.com"].includes(origin))headers["Access-Control-Allow-Origin"]=origin;
   return new Response(obj.body,{headers});
 }
 export async function handleStudyRequest(request,env,user,account,path,method){
