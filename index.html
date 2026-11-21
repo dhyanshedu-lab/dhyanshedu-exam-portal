@@ -3,18 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="DhyanshEdu examination portal">
-<title>DhyanshEdu | Exam Portal</title>
+<meta name="description" content="DhyanshEdu learning and examination portal. Learn Smart. Achieve More.">
+<title>DhyanshEdu | Learning & Exam Portal</title>
+<link rel="icon" type="image/png" href="./favicon.png">
+<meta name="theme-color" content="#0A1628">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,700;1,700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
 <main id="app">
 <section id="login-view" class="login-shell">
   <div class="login-brand">
-    <a class="brand" href="https://dhyanshedu.com"><span class="brand-mark">D</span><span>Dhyansh<span class="gold">Edu</span></span></a>
+    <a class="brand" href="https://dhyanshedu.com"><span class="brand-mark"><img src="./logo.png" alt="DhyanshEdu logo"></span><span>Dhyansh<span class="gold">Edu</span></span></a>
     <div class="login-copy">
       <p class="eyebrow">LEARN · PRACTICE · EXCEL</p>
       <h1>Your learning journey,<br><span>one test at a time.</span></h1>
@@ -29,7 +31,7 @@
   </div>
   <div class="login-panel">
     <div class="login-card">
-      <div class="mobile-brand brand"><span class="brand-mark">D</span><span>Dhyansh<span class="gold">Edu</span></span></div>
+      <div class="mobile-brand brand"><span class="brand-mark"><img src="./logo.png" alt="DhyanshEdu logo"></span><span>Dhyansh<span class="gold">Edu</span></span></div>
       <p class="eyebrow">EXAM PORTAL</p>
       <h2>Welcome back</h2>
       <p class="muted">Sign in with the account provided to you.</p>
@@ -42,7 +44,6 @@
           <button type="button" class="show-password" id="toggle-password">Show</button>
         </div>
         <button class="btn btn-primary full" id="login-button" type="submit">Sign in <span>→</span></button>
-        <div class="forgot-row"><a href="#forgot-password" id="forgot-link">Forgot password?</a></div>
         <p id="login-message" class="message" role="status"></p>
       </form>
       <div class="login-foot"><a href="https://dhyanshedu.com">← Back to DhyanshEdu website</a></div>
@@ -52,7 +53,7 @@
 
 <section id="invite-view" class="login-shell hidden">
   <div class="login-brand">
-    <a class="brand" href="https://dhyanshedu.com"><span class="brand-mark">D</span><span>Dhyansh<span class="gold">Edu</span></span></a>
+    <a class="brand" href="https://dhyanshedu.com"><span class="brand-mark"><img src="./logo.png" alt="DhyanshEdu logo"></span><span>Dhyansh<span class="gold">Edu</span></span></a>
     <div class="login-copy">
       <p class="eyebrow">WELCOME TO DHYANSHEDU</p>
       <h1>Set up your<br><span>teacher account.</span></h1>
@@ -62,7 +63,7 @@
   </div>
   <div class="login-panel">
     <div class="login-card">
-      <div class="mobile-brand brand"><span class="brand-mark">D</span><span>Dhyansh<span class="gold">Edu</span></span></div>
+      <div class="mobile-brand brand"><span class="brand-mark"><img src="./logo.png" alt="DhyanshEdu logo"></span><span>Dhyansh<span class="gold">Edu</span></span></div>
       <p class="eyebrow">TEACHER ACCOUNT ACTIVATION</p>
       <h2>Create your password</h2>
       <p class="muted">Choose a password you will use to sign in to the exam portal.</p>
@@ -80,7 +81,7 @@
 
 <section id="pending-view" class="login-shell hidden">
   <div class="login-brand">
-    <a class="brand" href="https://dhyanshedu.com"><span class="brand-mark">D</span><span>Dhyansh<span class="gold">Edu</span></span></a>
+    <a class="brand" href="https://dhyanshedu.com"><span class="brand-mark"><img src="./logo.png" alt="DhyanshEdu logo"></span><span>Dhyansh<span class="gold">Edu</span></span></a>
     <div class="login-copy">
       <p class="eyebrow">ACCOUNT SETUP COMPLETE</p>
       <h1>One final step<br><span>before you begin.</span></h1>
@@ -90,7 +91,7 @@
   </div>
   <div class="login-panel">
     <div class="login-card">
-      <div class="mobile-brand brand"><span class="brand-mark">D</span><span>Dhyansh<span class="gold">Edu</span></span></div>
+      <div class="mobile-brand brand"><span class="brand-mark"><img src="./logo.png" alt="DhyanshEdu logo"></span><span>Dhyansh<span class="gold">Edu</span></span></div>
       <p class="eyebrow">TEACHER ACCESS</p>
       <h2>Awaiting approval</h2>
       <p class="muted">Your account setup is complete. The DhyanshEdu administrator must approve your account before you can access the teacher workspace.</p>
@@ -100,64 +101,9 @@
   </div>
 </section>
 
-<section id="forgot-view" class="login-shell hidden">
-  <div class="login-brand">
-    <a class="brand" href="https://dhyanshedu.com"><span class="brand-mark">D</span><span>Dhyansh<span class="gold">Edu</span></span></a>
-    <div class="login-copy">
-      <p class="eyebrow">ACCOUNT RECOVERY</p>
-      <h1>Get back to<br><span>your learning journey.</span></h1>
-      <p class="muted">We'll email you a secure link to reset your password.</p>
-    </div>
-    <p class="copyright">© <span id="forgot-year"></span> DhyanshEdu</p>
-  </div>
-  <div class="login-panel">
-    <div class="login-card">
-      <div class="mobile-brand brand"><span class="brand-mark">D</span><span>Dhyansh<span class="gold">Edu</span></span></div>
-      <p class="eyebrow">PASSWORD RECOVERY</p>
-      <h2>Forgot password?</h2>
-      <p class="muted">Enter the email address registered with your account.</p>
-      <form id="forgot-form">
-        <label for="forgot-email">Email address</label>
-        <input id="forgot-email" type="email" autocomplete="username" placeholder="you@example.com" required>
-        <button class="btn btn-primary full" id="forgot-button" type="submit">Send reset link</button>
-        <p id="forgot-message" class="message" role="status" aria-live="polite"></p>
-        <button id="forgot-back-button" class="text-button" type="button">← Back to sign in</button>
-      </form>
-    </div>
-  </div>
-</section>
-
-<section id="reset-view" class="login-shell hidden">
-  <div class="login-brand">
-    <a class="brand" href="https://dhyanshedu.com"><span class="brand-mark">D</span><span>Dhyansh<span class="gold">Edu</span></span></a>
-    <div class="login-copy">
-      <p class="eyebrow">SECURE ACCOUNT RECOVERY</p>
-      <h1>Choose a new<br><span>password.</span></h1>
-      <p class="muted">Use a strong password that you have not used before.</p>
-    </div>
-    <p class="copyright">© <span id="reset-year"></span> DhyanshEdu</p>
-  </div>
-  <div class="login-panel">
-    <div class="login-card">
-      <div class="mobile-brand brand"><span class="brand-mark">D</span><span>Dhyansh<span class="gold">Edu</span></span></div>
-      <p class="eyebrow">PASSWORD RECOVERY</p>
-      <h2>Set a new password</h2>
-      <p class="muted">Your new password must contain at least 8 characters.</p>
-      <form id="reset-form">
-        <label for="reset-password">New password</label>
-        <input id="reset-password" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters" required>
-        <label for="reset-password-confirm">Confirm new password</label>
-        <input id="reset-password-confirm" type="password" autocomplete="new-password" minlength="8" placeholder="Enter password again" required>
-        <button class="btn btn-primary full" id="reset-button" type="submit">Update password</button>
-        <p id="reset-message" class="message" role="status" aria-live="polite"></p>
-      </form>
-    </div>
-  </div>
-</section>
-
 <section id="dashboard-view" class="dashboard hidden">
   <aside class="sidebar">
-    <a class="brand side-brand" href="#"><span class="brand-mark">D</span><span>Dhyansh<span class="gold">Edu</span></span></a>
+    <a class="brand side-brand" href="#"><span class="brand-mark"><img src="./logo.png" alt="DhyanshEdu logo"></span><span>Dhyansh<span class="gold">Edu</span></span></a>
     <p class="side-label">WORKSPACE</p>
     <nav>
       <a class="nav-item active" data-page="overview" href="#overview"><span>▦</span> Overview</a>
@@ -178,7 +124,7 @@
     </header>
     <div class="content">
       <section id="overview-page">
-        <div class="welcome-banner"><div><p class="eyebrow light">YOUR LEARNING PLATFORM</p><h2>Good to have you here.</h2><p>Here’s an overview of your DhyanshEdu examination workspace.</p></div><div class="banner-symbol">D<span>.</span></div></div>
+        <div class="welcome-banner"><div><p class="eyebrow light">YOUR LEARNING PLATFORM</p><h2>Good to have you here.</h2><p>Here’s an overview of your DhyanshEdu examination workspace.</p></div><img class="banner-logo" src="./logo.png" alt="DhyanshEdu"></div>
         <div class="section-heading"><div><h2>Platform overview</h2><p class="muted">Live counts from Cloudflare D1</p></div><span class="live-tag"><i></i> Connected</span></div>
         <div class="stats-grid">
           <article class="stat-card"><div class="stat-icon purple">♙</div><p>Total teachers</p><strong id="teacher-count">—</strong><small>Registered teacher profiles</small></article>
@@ -204,7 +150,7 @@
         <p class="hint">Invited teachers remain blocked until you approve them.</p>
       </section>
       <p id="dashboard-message" class="message"></p>
-      <footer class="page-footer">DhyanshEdu Exam Portal · Built for focused learning</footer>
+      <footer class="page-footer">DhyanshEdu · Dhyan Today. Math Better Tomorrow.</footer>
     </div>
   </section>
 </section>

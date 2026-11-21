@@ -16,6 +16,12 @@ $("#year").textContent = new Date().getFullYear();
 $("#invite-year").textContent = new Date().getFullYear();
 $("#pending-year").textContent = new Date().getFullYear();
 
+function isInvitationCallback() {
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const query = new URLSearchParams(window.location.search);
+  return hash.get("type") === "invite" || query.get("type") === "invite";
+}
+
 async function api(path, opts = {}) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) throw new Error("Please sign in again.");
@@ -33,7 +39,7 @@ async function api(path, opts = {}) {
 }
 
 function hideAllViews() {
-  ["login-view", "invite-view", "pending-view", "forgot-view", "reset-view", "dashboard-view"].forEach(id => {
+  ["login-view", "invite-view", "pending-view", "dashboard-view"].forEach(id => {
     $("#" + id).classList.add("hidden");
   });
 }
@@ -53,24 +59,6 @@ function showInvitationForm(message = "") {
 function showPendingApproval() {
   hideAllViews();
   $("#pending-view").classList.remove("hidden");
-}
-
-function showForgotPassword(message = "") {
-  hideAllViews();
-  $("#forgot-view").classList.remove("hidden");
-  $("#forgot-message").textContent = message;
-}
-
-function showResetPassword(message = "") {
-  hideAllViews();
-  $("#reset-view").classList.remove("hidden");
-  $("#reset-message").textContent = message;
-}
-
-function getAuthCallbackType() {
-  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  const query = new URLSearchParams(window.location.search);
-  return hash.get("type") || query.get("type") || "";
 }
 
 function page(name) {
@@ -265,72 +253,6 @@ $("#login-form").addEventListener("submit", async e => {
   await loadProfile(data.session);
 });
 
-$("#forgot-link").addEventListener("click", e => {
-  e.preventDefault();
-  $("#forgot-email").value = $("#email").value.trim();
-  showForgotPassword();
-});
-
-$("#forgot-back-button").addEventListener("click", () => showLogin());
-
-$("#forgot-form").addEventListener("submit", async e => {
-  e.preventDefault();
-  const button = $("#forgot-button");
-  const message = $("#forgot-message");
-  const email = $("#forgot-email").value.trim();
-  button.disabled = true;
-  button.textContent = "Sending…";
-  message.textContent = "";
-
-  try {
-    const redirectTo = `${window.location.origin}${window.location.pathname}`;
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
-    if (error) throw error;
-    message.classList.add("success-message");
-    message.textContent = "If an account exists for that email, a password-reset link has been sent. Please check your inbox and spam folder.";
-  } catch (err) {
-    message.classList.remove("success-message");
-    message.textContent = err.message || "Unable to send the reset email. Please try again.";
-  } finally {
-    button.disabled = false;
-    button.textContent = "Send reset link";
-  }
-});
-
-$("#reset-form").addEventListener("submit", async e => {
-  e.preventDefault();
-  const password = $("#reset-password").value;
-  const confirmation = $("#reset-password-confirm").value;
-  const button = $("#reset-button");
-  const message = $("#reset-message");
-  message.classList.remove("success-message");
-  message.textContent = "";
-
-  if (password.length < 8) {
-    message.textContent = "Use a password with at least 8 characters.";
-    return;
-  }
-  if (password !== confirmation) {
-    message.textContent = "The passwords do not match.";
-    return;
-  }
-
-  button.disabled = true;
-  button.textContent = "Updating password…";
-  try {
-    const { error } = await supabase.auth.updateUser({ password });
-    if (error) throw error;
-    await supabase.auth.signOut();
-    $("#reset-form").reset();
-    showLogin("Your password has been updated. Please sign in with your new password.");
-  } catch (err) {
-    message.textContent = err.message || "Could not update your password. Request a new reset link and try again.";
-  } finally {
-    button.disabled = false;
-    button.textContent = "Update password";
-  }
-});
-
 $("#invite-form").addEventListener("submit", completeInvitation);
 
 $("#pending-login-button").addEventListener("click", () => {
@@ -385,19 +307,8 @@ $("#teacher-form").addEventListener("submit", async e => {
 });
 
 async function initializePortal() {
-  const callbackType = getAuthCallbackType();
-  const invitationLink = callbackType === "invite";
-  const recoveryLink = callbackType === "recovery";
+  const invitationLink = isInvitationCallback();
   const { data, error } = await supabase.auth.getSession();
-
-  if (recoveryLink) {
-    if (data.session) {
-      showResetPassword();
-    } else {
-      showLogin("This password-reset link is invalid or has expired. Request a new reset email.");
-    }
-    return;
-  }
 
   if (invitationLink) {
     if (data.session) {
@@ -422,9 +333,6 @@ async function initializePortal() {
 }
 
 supabase.auth.onAuthStateChange((event) => {
-  if (event === "PASSWORD_RECOVERY") {
-    showResetPassword();
-  }
   if (event === "SIGNED_OUT" && !invitationFlowStarted) {
     profile = null;
     showLogin();
