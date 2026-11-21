@@ -105,7 +105,7 @@ function showPendingApproval() {
 }
 
 function page(name) {
-  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students", "exam-monitoring", "live-classes", "fees"];
+  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students", "exam-monitoring", "live-classes", "fees", "enquiries"];
   for (const pageName of pages) {
     const section = $(`#${pageName}-page`);
     if (section) section.classList.toggle("hidden", pageName !== name);
@@ -1232,6 +1232,37 @@ async function loadStudentFees(){
   }catch(e){root.textContent=e.message;}
 }
 
+
+async function loadEnquiries(){
+ const body=$("#enquiries-list"),message=$("#enquiries-message");if(!body)return;
+ body.innerHTML='<tr><td colspan="10">Loading enquiries…</td></tr>';message.textContent="";
+ try{
+  const [d,t]=await Promise.all([api("/api/enquiries"+($("#enquiry-status-filter")?.value?"?status="+encodeURIComponent($("#enquiry-status-filter").value):"")),api("/api/teachers")]);
+  const teachers=t.teachers||[];body.replaceChildren();
+  (d.enquiries||[]).forEach(e=>{
+   const tr=body.insertRow();
+   const cell=(v)=>{const td=tr.insertCell();td.textContent=v??"—";return td;};
+   cell(new Date(e.created_at+"Z").toLocaleString());
+   cell(e.student_name+(e.parent_name?" / "+e.parent_name:""));
+   const contact=cell("");const a=document.createElement("a");a.href="tel:"+e.phone;a.textContent=e.phone;contact.append(a);const em=document.createElement("div");const mail=document.createElement("a");mail.href="mailto:"+e.email;mail.textContent=e.email;em.append(mail);contact.append(em);
+   cell("Class "+e.student_class+" / "+(e.board||"Not specified"));
+   const st=cell("");const status=document.createElement("select");[["new","New"],["contacted","Contacted"],["demo_scheduled","Demo scheduled"],["enrolled","Enrolled"],["closed","Closed"]].forEach(([v,l])=>{const o=document.createElement("option");o.value=v;o.textContent=l;status.append(o);});status.value=e.status;st.append(status);
+   const ow=cell("");const owner=document.createElement("select");const none=document.createElement("option");none.value="";none.textContent="Unassigned";owner.append(none);teachers.filter(x=>x.status==="approved").forEach(x=>{const o=document.createElement("option");o.value=x.id;o.textContent=x.full_name;owner.append(o);});owner.value=e.assigned_to||"";ow.append(owner);
+   const fd=cell("");const follow=document.createElement("input");follow.type="date";follow.value=e.follow_up_at?e.follow_up_at.slice(0,10):"";fd.append(follow);
+   const nt=cell("");const notes=document.createElement("textarea");notes.rows=2;notes.maxLength=2000;notes.value=e.admin_notes||"";notes.placeholder="Internal follow-up notes";nt.append(notes);
+   const saveCell=cell("");const save=document.createElement("button");save.className="btn btn-primary btn-small";save.textContent="Save";save.addEventListener("click",async()=>{save.disabled=true;try{await api("/api/enquiries/"+encodeURIComponent(e.id),{method:"PATCH",body:JSON.stringify({status:status.value,assigned_to:owner.value||null,follow_up_at:follow.value||null,admin_notes:notes.value})});message.textContent="Enquiry updated.";await loadEnquiries();}catch(err){message.textContent=err.message;save.disabled=false;}});saveCell.append(save);
+   const hist=cell("");const hb=document.createElement("button");hb.className="btn btn-secondary btn-small";hb.textContent="View";hb.addEventListener("click",()=>loadEnquiryHistory(e.id,e.student_name));hist.append(hb);
+  });
+  if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=10;td.textContent="No website enquiries found.";}
+ }catch(e){body.innerHTML='<tr><td colspan="10"></td></tr>';body.querySelector("td").textContent=e.message;}
+}
+async function loadEnquiryHistory(id,name){
+ const panel=$("#enquiry-history-panel"),list=$("#enquiry-history-list");panel.classList.remove("hidden");$("#enquiry-history-title").textContent="History · "+name;list.textContent="Loading…";
+ try{const d=await api("/api/enquiries/"+encodeURIComponent(id)+"/history");list.replaceChildren();(d.history||[]).forEach(h=>{const p=document.createElement("p");p.className="hint";p.textContent=new Date(h.created_at+"Z").toLocaleString()+" · "+(h.actor_name||"System")+" · "+h.action+": "+(h.old_value||"—")+" → "+(h.new_value||"—");list.append(p);});if(!list.children.length)list.textContent="No changes recorded yet.";}catch(e){list.textContent=e.message;}
+}
+document.addEventListener("click",e=>{if(e.target.id==="refresh-enquiries")loadEnquiries();});
+document.addEventListener("change",e=>{if(e.target.id==="enquiry-status-filter")loadEnquiries();});
+
 async function loadAdminPage(name) {
   try {
     if (name==="classes") await loadClasses();
@@ -1243,6 +1274,7 @@ async function loadAdminPage(name) {
     if (name==="exam-monitoring") await loadExamMonitoring();
     if (name==="live-classes") await loadAdminLiveClasses();
     if (name==="fees") await loadAdminFees();
+    if (name==="enquiries") await loadEnquiries();
   } catch(error) { $("#dashboard-message").textContent=error.message; }
 }
 
