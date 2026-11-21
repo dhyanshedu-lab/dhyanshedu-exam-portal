@@ -178,10 +178,8 @@ export default {
 
      if (!path.startsWith("/api/")) return reply({error:"Not found"},404,request);
 
-     // Support the deployed D1 binding name DB1 while retaining DB compatibility.
-     // Use a prototype wrapper so other Worker bindings (including R2 and secrets) remain available.
-     env = Object.assign(Object.create(env), { DB: env.DB ?? env.DB1 });
-     if (!env.DB) return reply({error:"D1 binding is missing. Configure the Worker binding as DB1 (or DB)."},503,request);
+     // D1 structured records use the DB binding. R2 file storage uses DB1 in study.js.
+     if (!env.DB) return reply({error:"D1 database binding DB is not configured."},503,request);
 
      const user = await authUser(request,env);
 
