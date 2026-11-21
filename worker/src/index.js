@@ -482,6 +482,83 @@ export default {
        }
      }
 
+     // Teacher evaluation centre: only the exam owner or an assigned batch teacher can review attempts.
+     if (account.role === "teacher") {
+       if (path === "/api/teacher/evaluations" && method === "GET") {
+         const rows=await env.DB.prepare(
+           "SELECT ea.id attempt_id,ea.status attempt_status,ea.started_at,ea.submitted_at,ea.score,e.id exam_id,e.title exam_title,e.total_marks,e.batch_id,b.batch_name,u.full_name student_name,u.email student_email,r.marks_obtained,r.published_at,(SELECT COUNT(*) FROM student_answers sa JOIN exam_questions eq ON eq.id=sa.exam_question_id JOIN questions q ON q.id=eq.question_id WHERE sa.attempt_id=ea.id AND q.question_type IN ('numerical','short_answer','long_answer')) manual_count FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id JOIN batches b ON b.id=e.batch_id JOIN users u ON u.id=ea.student_id LEFT JOIN results r ON r.attempt_id=ea.id WHERE ea.status IN ('submitted','evaluated') AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?)) ORDER BY ea.submitted_at DESC"
+         ).bind(user.id,user.id).all();
+         return reply({success:true,evaluations:rows.results||[]},200,request);
+       }
+
+       const evaluationMatch=path.match(/^\/api\/teacher\/evaluations\/([0-9a-f-]+)$/i);
+       if(evaluationMatch && method==="GET"){
+         const attempt=await env.DB.prepare(
+           "SELECT ea.id attempt_id,ea.status attempt_status,ea.started_at,ea.submitted_at,ea.score,e.id exam_id,e.title exam_title,e.total_marks,e.pass_marks,e.batch_id,b.batch_name,u.full_name student_name,u.email student_email,r.marks_obtained,r.published_at FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id JOIN batches b ON b.id=e.batch_id JOIN users u ON u.id=ea.student_id LEFT JOIN results r ON r.attempt_id=ea.id WHERE ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?))"
+         ).bind(evaluationMatch[1],user.id,user.id).first();
+         if(!attempt) return reply({error:"Evaluation not found or you are not assigned to this exam."},404,request);
+         const rows=await env.DB.prepare(
+           "SELECT eq.id exam_question_id,eq.marks,eq.negative_marks,eq.sort_order,q.question_type,q.question_text,q.explanation,sa.answer_text,sa.selected_option_ids,sa.is_correct,sa.marks_awarded FROM exam_questions eq JOIN questions q ON q.id=eq.question_id LEFT JOIN student_answers sa ON sa.exam_question_id=eq.id AND sa.attempt_id=? WHERE eq.exam_id=? ORDER BY eq.sort_order"
+         ).bind(attempt.attempt_id,attempt.exam_id).all();
+         const options=await env.DB.prepare(
+           "SELECT qo.question_id,qo.option_label,qo.option_text,qo.is_correct FROM exam_questions eq JOIN question_options qo ON qo.question_id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.sort_order,qo.sort_order"
+         ).bind(attempt.exam_id).all();
+         const questions=(rows.results||[]).map(q=>({
+           ...q,options:(options.results||[]).filter(o=>o.question_id===q.question_id).map(o=>({label:o.option_label,text:o.option_text,is_correct:!!o.is_correct}))
+         }));
+         return reply({success:true,attempt,questions},200,request);
+       }
+
+       const evaluateMatch=path.match(/^\/api\/teacher\/evaluations\/([0-9a-f-]+)\/grade$/i);
+       if(evaluateMatch && method==="POST"){
+         const b=await body(request), attemptId=evaluateMatch[1];
+         const attempt=await env.DB.prepare(
+           "SELECT ea.id,ea.status,ea.exam_id,ea.student_id,e.total_marks,e.pass_marks FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id WHERE ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?))"
+         ).bind(attemptId,user.id,user.id).first();
+         if(!attempt) return reply({error:"Evaluation not found or you are not assigned to this exam."},404,request);
+         if(!["submitted","evaluated"].includes(attempt.status)) return reply({error:"Only submitted attempts can be evaluated."},409,request);
+         const grades=Array.isArray(b.grades)?b.grades:[];
+         if(!grades.length || grades.length>200) return reply({error:"No valid question grades were supplied."},400,request);
+         const validRows=await env.DB.prepare(
+           "SELECT eq.id,q.question_type,eq.marks FROM exam_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.exam_id=?"
+         ).bind(attempt.exam_id).all();
+         const valid=new Map((validRows.results||[]).map(q=>[q.id,q]));
+         const seen=new Set();
+         let manualTotal=0;
+         const statements=[];
+         for(const grade of grades){
+           const qid=text(grade.exam_question_id,64), q=valid.get(qid);
+           const marks=Number(grade.marks_awarded);
+           if(!q || seen.has(qid) || !["numerical","short_answer","long_answer"].includes(q.question_type) ||
+              !Number.isFinite(marks) || marks<0 || marks>Number(q.marks)) {
+             return reply({error:"Each manual grade must reference a unique written/numerical question and be between zero and its maximum marks."},400,request);
+           }
+           seen.add(qid);manualTotal+=marks;
+           statements.push(env.DB.prepare("UPDATE student_answers SET marks_awarded=?,is_correct=NULL WHERE attempt_id=? AND exam_question_id=?").bind(marks,attemptId,qid));
+         }
+         const remaining=validRows.results.filter(q=>["numerical","short_answer","long_answer"].includes(q.question_type));
+         if(seen.size!==remaining.length) return reply({error:"Grade every numerical and written question before completing evaluation."},400,request);
+         const objective=await env.DB.prepare("SELECT COALESCE(SUM(marks_awarded),0) total FROM student_answers WHERE attempt_id=? AND exam_question_id IN (SELECT eq.id FROM exam_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.exam_id=? AND q.question_type IN ('mcq','multiple_select'))").bind(attemptId,attempt.exam_id).first();
+         const score=Math.max(0,Number(objective?.total||0)+manualTotal);
+         const total=Number(attempt.total_marks||0), percentage=total>0?Math.round(score/total*10000)/100:0;
+         statements.push(env.DB.prepare("UPDATE exam_attempts SET status='evaluated',score=? WHERE id=?").bind(score,attemptId));
+         statements.push(env.DB.prepare("UPDATE results SET marks_obtained=?,percentage=?,evaluated_by=? WHERE attempt_id=?").bind(score,percentage,user.id,attemptId));
+         await env.DB.batch(statements);
+         return reply({success:true,status:"evaluated",marks_obtained:score,total_marks:total,percentage,pass:attempt.pass_marks==null?null:score>=Number(attempt.pass_marks)},200,request);
+       }
+
+       const publishEvaluationMatch=path.match(/^\/api\/teacher\/evaluations\/([0-9a-f-]+)\/publish$/i);
+       if(publishEvaluationMatch && method==="POST"){
+         const attempt=await env.DB.prepare(
+           "SELECT ea.id,ea.status,r.published_at FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id JOIN results r ON r.attempt_id=ea.id WHERE ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?))"
+         ).bind(publishEvaluationMatch[1],user.id,user.id).first();
+         if(!attempt) return reply({error:"Result not found or you are not assigned to this exam."},404,request);
+         if(attempt.status!=="evaluated") return reply({error:"Complete evaluation before publishing this result."},409,request);
+         await env.DB.prepare("UPDATE results SET published_at=datetime('now') WHERE attempt_id=? AND published_at IS NULL").bind(attempt.id).run();
+         return reply({success:true,published:true},200,request);
+       }
+     }
+
      const admin = await adminUser(user.id,env);
 
      if (!admin) return reply({error:"Admin access required"},403,request);
