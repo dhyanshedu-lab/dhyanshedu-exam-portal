@@ -1,4 +1,4 @@
-const ALLOWED_ORIGINS=["https://dhyanshedu-lab.github.io","https://dhyanshedu-exam-portal.dhyanshedu.workers.dev"];
+const ALLOWED_ORIGINS=["https://dhyanshedu-lab.github.io","https://dhyanshedu-exam-portal.dhyanshedu.workers.dev","https://dhyanshedu-exam-portal.pages.dev","https://dhyanshedu.com","https://www.dhyanshedu.com"];
 const json=(data,status,request)=>{const origin=request.headers.get("Origin")||"",headers={"Content-Type":"application/json","Cache-Control":"no-store","Vary":"Origin"};if(ALLOWED_ORIGINS.includes(origin))headers["Access-Control-Allow-Origin"]=origin;return new Response(JSON.stringify(data),{status,headers});};
 const fail=(message,status,request)=>json({error:message},status,request);
 const clean=(v,max=240)=>String(v??"").trim().slice(0,max);
