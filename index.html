@@ -33,8 +33,8 @@
     <div class="login-card">
       <div class="mobile-brand brand"><span class="brand-mark"><img src="./logo.png" alt="DhyanshEdu logo"></span><span>Dhyansh<span class="gold">Edu</span></span></div>
       <p class="eyebrow">EXAM PORTAL</p>
-      <h2>Welcome back</h2>
-      <p class="muted">Sign in with the account provided to you.</p>
+      <h2 id="login-heading">Welcome back</h2>
+      <p class="muted" id="login-description">Sign in with the account provided to you.</p>
       <form id="login-form">
         <label for="email">Email address</label>
         <input id="email" type="email" autocomplete="username" placeholder="you@example.com" required>
@@ -47,7 +47,10 @@
         <button class="forgot-password" id="forgot-password" type="button">Forgot password?</button>
         <p id="login-message" class="message" role="status"></p>
       </form>
-      <div class="login-foot"><a href="https://dhyanshedu.com">← Back to DhyanshEdu website</a></div>
+      <div class="login-foot">
+        <p class="muted">Choose your portal: <a href="./?role=admin">Admin</a> · <a href="./?role=teacher">Teacher</a> · <a href="./?role=student">Student</a></p>
+        <a href="https://dhyanshedu.com">← Back to DhyanshEdu website</a>
+      </div>
     </div>
   </div>
 </section>
