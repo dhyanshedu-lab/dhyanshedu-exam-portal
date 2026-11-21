@@ -76,3 +76,14 @@ textarea{resize:vertical;min-height:76px;line-height:1.5}
 .student-save-status{font-size:12px;margin:0}
 .exam-countdown{margin-left:auto;background:#fbf2d9;color:#7e5b08;border-radius:9px;padding:9px 13px;font-size:17px;font-variant-numeric:tabular-nums}
 #student-submit-exam{margin:14px 0 30px}
+
+/* Teacher evaluation centre */
+.evaluation-question{padding:20px;margin:14px 0}
+.evaluation-question h3{font-size:15px;margin:0 0 10px}
+.evaluation-question p{line-height:1.6}
+.evaluation-answer{white-space:pre-wrap;background:#f6f8fb;border:1px solid #e2e7ef;border-radius:9px;padding:14px;margin:12px 0;font-size:13px;line-height:1.6}
+.evaluation-grade-fields{display:grid;gap:8px;max-width:620px;margin-top:14px}
+.evaluation-grade-fields label{font-size:12px;font-weight:700}
+.evaluation-grade-fields input,.evaluation-grade-fields textarea{width:100%;border:1px solid #dce2eb;border-radius:8px;padding:10px 12px}
+#teacher-grade-form{display:grid;gap:12px}
+#teacher-grade-form button{justify-self:start}
