@@ -32,3 +32,6 @@ jobs:
         run: node --check worker/src/study.js
       - name: Check fee management API syntax
         run: node --check worker/src/fees.js
+
+      - name: Check enquiry and admission API syntax
+        run: node --check worker/src/enquiries.js

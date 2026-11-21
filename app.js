@@ -96,7 +96,7 @@ function showPendingApproval() {
 }
 
 function page(name) {
-  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students", "exam-monitoring", "live-classes", "fees"];
+  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students", "exam-monitoring", "live-classes", "fees", "enquiries", "admissions"];
   for (const pageName of pages) {
     const section = $(`#${pageName}-page`);
     if (section) section.classList.toggle("hidden", pageName !== name);
@@ -1220,6 +1220,175 @@ async function loadStudentFees(){
   }catch(e){root.textContent=e.message;}
 }
 
+
+let adminEnquiryCache = [];
+let adminDemoCache = [];
+let enquiryStaffCache = [];
+
+const enquiryStatuses = ["new","contacted","interested","follow_up_required","converted","not_interested","closed"];
+const demoStatuses = ["requested","pending_confirmation","confirmed","rescheduled","completed","cancelled","no_show"];
+const safeText = value => String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+const localDateTime = value => value ? new Date(value).toLocaleString() : "—";
+
+async function loadAdminEnquiries() {
+  const list=$("#enquiry-list"), demos=$("#demo-list");
+  if(!list || !demos) return;
+  list.innerHTML='<tr><td colspan="7">Loading enquiries…</td></tr>';
+  demos.innerHTML='<tr><td colspan="6">Loading demos…</td></tr>';
+  try {
+    const [enquiries,demoData,staff]=await Promise.all([
+      api("/api/admin/enquiries?status="+encodeURIComponent($("#enquiry-status-filter")?.value||"")+"&q="+encodeURIComponent($("#enquiry-search")?.value.trim()||"")),
+      api("/api/admin/demos"),
+      api("/api/teachers")
+    ]);
+    adminEnquiryCache=enquiries.enquiries||[];
+    adminDemoCache=demoData.demos||[];
+    enquiryStaffCache=(staff.teachers||[]).filter(t=>t.status==="approved" && !t.deleted_at);
+    $("#enquiry-total").textContent=adminEnquiryCache.length;
+    $("#enquiry-new").textContent=adminEnquiryCache.filter(x=>x.status==="new").length;
+    $("#enquiry-due").textContent=adminEnquiryCache.filter(x=>x.next_follow_up_at && new Date(x.next_follow_up_at)<=new Date()).length;
+    $("#demo-total").textContent=adminDemoCache.filter(x=>["requested","pending_confirmation","confirmed","rescheduled"].includes(x.status)).length;
+    renderAdminEnquiries(); renderAdminDemos();
+    $("#enquiry-message").textContent="";
+  } catch(e) {
+    list.innerHTML='<tr><td colspan="7">Could not load enquiries. '+safeText(e.message)+'</td></tr>';
+    demos.innerHTML='<tr><td colspan="6">Could not load demos.</td></tr>';
+  }
+}
+
+function renderAdminEnquiries(){
+  const root=$("#enquiry-list");root.replaceChildren();
+  adminEnquiryCache.forEach(item=>{
+    const tr=root.insertRow();
+    const who=tr.insertCell();who.innerHTML="<b>"+safeText(item.student_name)+"</b>"+(item.parent_name?"<small class='muted'><br>Parent: "+safeText(item.parent_name)+"</small>":"");
+    const contact=tr.insertCell();contact.textContent=[item.phone,item.email].filter(Boolean).join(" · ");
+    tr.insertCell().textContent=[item.class_label,item.learning_mode==="one_to_one"?"One-to-one":item.learning_mode==="group"?"Group":""].filter(Boolean).join(" · ")||"—";
+    tr.insertCell().textContent=localDateTime(item.created_at);
+    const status=tr.insertCell(),select=document.createElement("select");select.className="status-select";
+    enquiryStatuses.forEach(s=>{const o=document.createElement("option");o.value=s;o.textContent=s.replaceAll("_"," ");o.selected=s===item.status;select.append(o);});
+    select.addEventListener("change",async()=>{try{await api("/api/admin/enquiries/"+encodeURIComponent(item.id),{method:"PATCH",body:JSON.stringify({status:select.value})});await loadAdminEnquiries();}catch(e){alert(e.message);select.value=item.status;}});
+    status.append(select);
+    tr.insertCell().textContent=localDateTime(item.next_follow_up_at);
+    const action=tr.insertCell(),button=document.createElement("button");button.className="btn btn-secondary btn-small";button.textContent="View / follow up";button.addEventListener("click",()=>openEnquiryDetail(item.id));action.append(button);
+  });
+  if(!root.children.length){const tr=root.insertRow(),td=tr.insertCell();td.colSpan=7;td.className="empty-state";td.textContent="No enquiries match these filters.";}
+}
+
+function renderAdminDemos(){
+  const root=$("#demo-list");root.replaceChildren();
+  adminDemoCache.forEach(item=>{
+    const tr=root.insertRow();
+    tr.insertCell().textContent=item.student_name;
+    tr.insertCell().textContent=[item.contact_phone,item.contact_email].filter(Boolean).join(" · ");
+    tr.insertCell().textContent=localDateTime(item.preferred_at);
+    tr.insertCell().textContent=item.assigned_teacher_name||"Not assigned";
+    const statusCell=tr.insertCell(),select=document.createElement("select");select.className="status-select";
+    demoStatuses.forEach(s=>{const o=document.createElement("option");o.value=s;o.textContent=s.replaceAll("_"," ");o.selected=s===item.status;select.append(o);});
+    select.addEventListener("change",async()=>{try{await api("/api/admin/demos/"+encodeURIComponent(item.id),{method:"PATCH",body:JSON.stringify({status:select.value})});await loadAdminEnquiries();}catch(e){alert(e.message);select.value=item.status;}});
+    statusCell.append(select);
+    const action=tr.insertCell(),button=document.createElement("button");button.className="btn btn-secondary btn-small";button.textContent="Schedule / assign";button.addEventListener("click",()=>editDemoBooking(item));action.append(button);
+  });
+  if(!root.children.length){const tr=root.insertRow(),td=tr.insertCell();td.colSpan=6;td.className="empty-state";td.textContent="No demo bookings yet.";}
+}
+
+async function openEnquiryDetail(id){
+  const panel=$("#enquiry-detail-panel");panel.classList.remove("hidden");panel.textContent="Loading enquiry history…";
+  try{
+    const data=await api("/api/admin/enquiries/"+encodeURIComponent(id)),e=data.enquiry;
+    panel.innerHTML=`
+      <div class="section-heading"><div><h3>${safeText(e.student_name)} — enquiry details</h3><p class="muted">${safeText(e.phone)} · ${safeText(e.email||"No email")}</p></div><button type="button" class="btn btn-secondary" id="close-enquiry-detail">Close</button></div>
+      <p>${safeText(e.message||"No message provided.")}</p>
+      <form id="enquiry-update-form" class="form-grid">
+        <div><label>Status</label><select id="detail-enquiry-status">${enquiryStatuses.map(s=>'<option value="'+s+'" '+(e.status===s?'selected':'')+'>'+s.replaceAll("_"," ")+'</option>').join("")}</select></div>
+        <div><label>Follow-up owner</label><select id="detail-enquiry-owner"><option value="">Unassigned</option>${enquiryStaffCache.map(t=>'<option value="'+safeText(t.id)+'" '+(e.assigned_to===t.id?'selected':'')+'>'+safeText(t.full_name)+'</option>').join("")}</select></div>
+        <div><label>Next follow-up date/time</label><input id="detail-enquiry-followup" type="datetime-local" value="${e.next_follow_up_at?safeText(new Date(e.next_follow_up_at).toISOString().slice(0,16)):""}"></div>
+        <div><button class="btn btn-primary" type="submit">Save enquiry</button></div>
+      </form>
+      <form id="enquiry-activity-form" class="form-grid">
+        <div><label>Activity type</label><select id="enquiry-activity-type"><option value="call">Call</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option><option value="note">Note</option><option value="follow_up">Follow-up</option></select></div>
+        <div class="full"><label>Activity note</label><textarea id="enquiry-activity-summary" rows="2" required maxlength="1000" placeholder="Record the discussion or next action"></textarea></div>
+        <div><button class="btn btn-secondary" type="submit">Add activity</button></div>
+      </form>
+      <div><h4>Activity history</h4><div id="enquiry-activity-list"></div></div>
+      <button type="button" class="btn btn-primary" id="create-demo-from-enquiry">Create demo from this enquiry</button>`;
+    $("#close-enquiry-detail").addEventListener("click",()=>panel.classList.add("hidden"));
+    $("#enquiry-update-form").addEventListener("submit",async ev=>{ev.preventDefault();const follow=$("#detail-enquiry-followup").value;try{await api("/api/admin/enquiries/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status:$("#detail-enquiry-status").value,assigned_to:$("#detail-enquiry-owner").value,next_follow_up_at:follow?new Date(follow).toISOString():null})});await loadAdminEnquiries();await openEnquiryDetail(id);}catch(err){alert(err.message);}});
+    $("#enquiry-activity-form").addEventListener("submit",async ev=>{ev.preventDefault();try{await api("/api/admin/enquiries/"+encodeURIComponent(id)+"/activities",{method:"POST",body:JSON.stringify({activity_type:$("#enquiry-activity-type").value,summary:$("#enquiry-activity-summary").value.trim()})});await openEnquiryDetail(id);}catch(err){alert(err.message);}});
+    $("#create-demo-from-enquiry").addEventListener("click",()=>showDemoForm(e));
+    const history=$("#enquiry-activity-list");history.replaceChildren();
+    (data.activities||[]).forEach(a=>{const p=document.createElement("p");p.className="hint";p.textContent=localDateTime(a.created_at)+" · "+a.activity_type+" · "+a.summary+(a.performed_by_name?" — "+a.performed_by_name:"");history.append(p);});
+    if(!history.children.length)history.textContent="No activity recorded yet.";
+  }catch(err){panel.textContent=err.message;}
+}
+
+function showDemoForm(enquiry=null){
+  const panel=$("#enquiry-detail-panel");panel.classList.remove("hidden");
+  panel.innerHTML=`
+    <div class="section-heading"><div><h3>Create demo request</h3><p class="muted">Admin confirmation is required before a demo is treated as booked.</p></div><button id="close-demo-form" class="btn btn-secondary" type="button">Close</button></div>
+    <form id="admin-demo-form" class="form-grid">
+      <div><label>Linked enquiry</label><select id="demo-enquiry"><option value="">Not linked</option>${adminEnquiryCache.map(x=>'<option value="'+safeText(x.id)+'" '+(enquiry?.id===x.id?'selected':'')+'>'+safeText(x.student_name)+' · '+safeText(x.phone)+'</option>').join("")}</select></div>
+      <div><label>Student name</label><input id="demo-student-name" required value="${safeText(enquiry?.student_name||"")}"></div>
+      <div><label>Parent name</label><input id="demo-parent-name" value="${safeText(enquiry?.parent_name||"")}"></div>
+      <div><label>Contact phone</label><input id="demo-phone" required value="${safeText(enquiry?.phone||"")}"></div>
+      <div><label>Contact email</label><input id="demo-email" type="email" value="${safeText(enquiry?.email||"")}"></div>
+      <div><label>Class</label><input id="demo-class" value="${safeText(enquiry?.class_label||"")}"></div>
+      <div><label>Learning mode</label><select id="demo-mode"><option value="group">Group</option><option value="one_to_one">One-to-one</option></select></div>
+      <div><label>Preferred date/time</label><input id="demo-preferred" type="datetime-local"></div>
+      <div class="full"><label>Admin notes</label><textarea id="demo-notes" rows="2"></textarea></div>
+      <div><button class="btn btn-primary" type="submit">Create demo request</button></div>
+    </form>`;
+  $("#close-demo-form").addEventListener("click",()=>panel.classList.add("hidden"));
+  $("#admin-demo-form").addEventListener("submit",async ev=>{ev.preventDefault();try{const pref=$("#demo-preferred").value;await api("/api/admin/demos",{method:"POST",body:JSON.stringify({enquiry_id:$("#demo-enquiry").value||null,student_name:$("#demo-student-name").value.trim(),parent_name:$("#demo-parent-name").value.trim(),contact_phone:$("#demo-phone").value.trim(),contact_email:$("#demo-email").value.trim(),class_label:$("#demo-class").value.trim(),learning_mode:$("#demo-mode").value,preferred_at:pref?new Date(pref).toISOString():null,admin_notes:$("#demo-notes").value.trim()})});panel.classList.add("hidden");await loadAdminEnquiries();}catch(err){alert(err.message);}});
+}
+
+function editDemoBooking(item){
+  const teacherChoices=enquiryStaffCache; // /api/teachers already returns teacher accounts only.
+  const teacherId=prompt("Enter approved teacher ID (or leave blank to keep current):\n"+teacherChoices.map(t=>t.full_name+" — "+t.id).join("\n"),item.assigned_teacher_id||"");
+  if(teacherId===null)return;
+  const start=prompt("Confirmed start date/time (ISO format, optional)",item.confirmed_starts_at||"");
+  if(start===null)return;
+  const end=prompt("Confirmed end date/time (ISO format, optional)",item.confirmed_ends_at||"");
+  if(end===null)return;
+  const url=prompt("Meeting URL (optional)",item.meeting_url||"");
+  if(url===null)return;
+  api("/api/admin/demos/"+encodeURIComponent(item.id),{method:"PATCH",body:JSON.stringify({status:item.status,assigned_teacher_id:teacherId||undefined,confirmed_starts_at:start||undefined,confirmed_ends_at:end||undefined,meeting_url:url||undefined})}).then(loadAdminEnquiries).catch(e=>alert(e.message));
+}
+
+let admissionStudentCache = [];
+async function loadAdminAdmissions() {
+  const body=$("#admission-list");
+  if(!body) return;
+  body.innerHTML='<tr><td colspan="8">Loading admissions…</td></tr>';
+  try {
+    const [admissionData,studentData,classData,subjectData,enquiryData]=await Promise.all([
+      api("/api/admin/admissions"),api("/api/students"),api("/api/classes"),api("/api/subjects"),api("/api/admin/enquiries")
+    ]);
+    admissionStudentCache=(studentData.students||[]).filter(s=>s.status==="approved"&&!s.deleted_at);
+    const fill=(selector,items,label,placeholder)=>{
+      const el=$(selector); if(!el)return;
+      el.replaceChildren(); const first=document.createElement("option");first.value="";first.textContent=placeholder;el.append(first);
+      items.forEach(item=>{const o=document.createElement("option");o.value=item.id;o.textContent=label(item);el.append(o);});
+    };
+    const activeClasses=(classData.classes||[]).filter(x=>x.status==="active");
+    const activeSubjects=(subjectData.subjects||[]).filter(x=>x.status==="active");
+    fill("#admission-student",admissionStudentCache,s=>s.full_name+" · "+s.email,"Select approved student");
+    fill("#admission-class",activeClasses,x=>x.class_name+(x.section?" - "+x.section:""),"Select class");
+    fill("#admission-subject",activeSubjects,x=>x.subject_name,"Select subject");
+    if(!$("#admission-date").value) $("#admission-date").value=new Date().toISOString().slice(0,10);
+    fill("#admission-enquiry",(enquiryData.enquiries||[]).filter(x=>x.status!=="converted"),x=>x.student_name+" · "+x.phone,"No linked enquiry");
+    body.replaceChildren();
+    const classNames=new Map((classData.classes||[]).map(x=>[String(x.id),x.class_name+(x.section?" - "+x.section:"")]));
+    const subjectNames=new Map((subjectData.subjects||[]).map(x=>[String(x.id),x.subject_name]));
+    (admissionData.admissions||[]).forEach(a=>{
+      const tr=body.insertRow();
+      [a.admission_number,a.student_name,a.email,a.admission_date,classNames.get(String(a.class_id))||"—",subjectNames.get(String(a.subject_id))||"—",a.learning_mode||"—",a.status].forEach(v=>{const td=tr.insertCell();td.textContent=v??"—";});
+    });
+    if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=8;td.textContent="No admissions recorded yet.";}
+    $("#admission-message").textContent="";
+  } catch(e) {
+    body.innerHTML='<tr><td colspan="8">Could not load admissions: '+safeText(e.message)+'</td></tr>';
+  }
+}
 async function loadAdminPage(name) {
   try {
     if (name==="classes") await loadClasses();
@@ -1231,6 +1400,8 @@ async function loadAdminPage(name) {
     if (name==="exam-monitoring") await loadExamMonitoring();
     if (name==="live-classes") await loadAdminLiveClasses();
     if (name==="fees") await loadAdminFees();
+    if (name==="enquiries") await loadAdminEnquiries();
+    if (name==="admissions") await loadAdminAdmissions();
   } catch(error) { $("#dashboard-message").textContent=error.message; }
 }
 
@@ -1467,6 +1638,36 @@ $("#signout-button").addEventListener("click", async () => {
   profile = null;
   showLogin("You have signed out.");
 });
+
+$("#admission-form")?.addEventListener("submit",async e=>{
+  e.preventDefault();
+  const button=$("#save-admission-button");button.disabled=true;
+  try{
+    const fee=($("#admission-agreed-fee").value||"").trim();
+    const payload={
+      student_id:$("#admission-student").value,
+      enquiry_id:$("#admission-enquiry").value||null,
+      admission_number:$("#admission-number").value.trim(),
+      admission_date:$("#admission-date").value,
+      class_id:$("#admission-class").value||null,
+      subject_id:$("#admission-subject").value||null,
+      learning_mode:$("#admission-mode").value||null,
+      agreed_fee_amount_paise:fee===""?null:Math.round(Number(fee)*100),
+      notes:$("#admission-notes").value.trim()
+    };
+    if(fee!==""&&(!Number.isFinite(Number(fee))||Number(fee)<0))throw new Error("Enter a valid agreed fee amount.");
+    await api("/api/admin/admissions",{method:"POST",body:JSON.stringify(payload)});
+    $("#admission-form").reset();
+    $("#admission-date").value=new Date().toISOString().slice(0,10);
+    $("#admission-message").textContent="Admission created. Student account was not created; select an already approved student.";
+    await loadAdminAdmissions();
+  }catch(err){$("#admission-message").textContent=err.message;}
+  finally{button.disabled=false;}
+});
+$("#refresh-admissions")?.addEventListener("click",loadAdminAdmissions);
+$("#refresh-enquiries")?.addEventListener("click",loadAdminEnquiries);
+$("#apply-enquiry-filter")?.addEventListener("click",loadAdminEnquiries);
+$("#new-demo-button")?.addEventListener("click",()=>showDemoForm());
 
 document.querySelectorAll(".nav-item[data-page]").forEach(a => {
   a.addEventListener("click", e => {

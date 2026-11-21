@@ -117,3 +117,18 @@ textarea{resize:vertical;min-height:76px;line-height:1.5}
 
 /* Fee management */
 #fees-page .form-card{margin-top:18px}#fee-account-list td:first-child,#fee-plan-list td:first-child{font-weight:700}#student-fee-accounts .table-card{margin:18px 0}#student-fee-accounts .table-heading p{line-height:1.7}
+
+
+/* Enquiry and demo management */
+#enquiries-page .stats-grid{margin:18px 0}
+#enquiries-page .form-card{margin:18px 0}
+#enquiries-page .section-heading h3{margin:0}
+#enquiries-page .inline-form input,#enquiries-page .inline-form select{min-height:42px;border:1px solid #dce2eb;border-radius:9px;padding:10px 12px}
+#enquiry-detail-panel{border-left:4px solid var(--gold)}
+#enquiry-detail-panel .section-heading{margin-bottom:16px}
+#enquiry-detail-panel form{margin:18px 0}
+#enquiry-activity-list{max-height:260px;overflow:auto;border-top:1px solid var(--line);margin:12px 0;padding-top:8px}
+#enquiry-activity-list .hint{padding:7px 0;border-bottom:1px solid #edf0f4}
+#enquiry-list td:first-child{min-width:155px}
+#enquiry-list td,#demo-list td{white-space:normal}
+@media(max-width:680px){#enquiries-page .stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#enquiries-page .inline-form{display:grid;grid-template-columns:1fr}}
