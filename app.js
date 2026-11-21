@@ -173,7 +173,7 @@ function roleWorkspaceSection() {
       <div class="table-card"><div class="table-heading"><h3>My exams</h3></div><div class="table-scroll"><table><thead><tr><th>Exam</th><th>Batch</th><th>Questions</th><th>Total marks</th><th>Schedule</th><th>Status</th><th>Action</th></tr></thead><tbody id="teacher-exam-list"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div>
       <div class="section-heading lower"><div><h2>Evaluation Centre</h2><p class="muted">Review submitted answers, award marks, add feedback and publish results.</p></div></div>
       <div class="table-card"><div class="table-heading"><h3>Student submissions</h3></div><div class="table-scroll"><table><thead><tr><th>Student</th><th>Exam</th><th>Batch</th><th>Submitted</th><th>Status</th><th>Score</th><th>Action</th></tr></thead><tbody id="teacher-evaluation-list"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div>
-      <div id="teacher-evaluation-panel" class="hidden"></div>`;
+      <div id="teacher-evaluation-panel" class="hidden"></div>
 
       <div class="section-heading lower"><div><h2>Study materials</h2><p class="muted">Upload worksheets, notes and PDFs for your assigned batches.</p></div></div>
       <div class="form-card"><form id="teacher-material-form" class="form-grid">
@@ -195,6 +195,7 @@ function roleWorkspaceSection() {
       </form><p id="teacher-assignment-message" class="message"></p></div>
       <div class="table-card"><div class="table-heading"><h3>Published assignments</h3></div><div class="table-scroll"><table><thead><tr><th>Assignment</th><th>Batch</th><th>Due</th><th>Status</th><th>Submissions</th></tr></thead><tbody id="teacher-assignment-list"><tr><td colspan="5">Loading…</td></tr></tbody></table></div></div>
       <div id="teacher-submissions-panel" class="hidden"></div>
+    `;
     section.append(authoring);
   } else if (profile?.role === "student") {
     const exams = document.createElement("div");
@@ -202,13 +203,14 @@ function roleWorkspaceSection() {
     exams.innerHTML = `
       <div class="section-heading lower"><div><h2>Exam Centre</h2><p class="muted">View available exams, continue an attempt and check published results.</p></div></div>
       <div id="student-exam-list" class="table-card"><div class="table-heading"><h3>My exams</h3></div><div class="table-scroll"><table><thead><tr><th>Exam</th><th>Batch</th><th>Schedule</th><th>Duration</th><th>Status</th><th>Result</th><th>Action</th></tr></thead><tbody id="student-exams-body"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div>
-      <div id="student-attempt-panel" class="hidden"></div><div id="student-result-panel" class="hidden"></div>`;
+      <div id="student-attempt-panel" class="hidden"></div><div id="student-result-panel" class="hidden"></div>
 
       <div class="section-heading lower"><div><h2>Assignments and homework</h2><p class="muted">Read instructions, download worksheets and submit your completed work.</p></div></div>
       <div class="table-card"><div class="table-heading"><h3>My assignments</h3></div><div class="table-scroll"><table><thead><tr><th>Assignment</th><th>Batch</th><th>Due</th><th>Status</th><th>Marks / Feedback</th><th>Action</th></tr></thead><tbody id="student-assignment-list"><tr><td colspan="6">Loading…</td></tr></tbody></table></div></div>
       <div id="student-submission-panel" class="hidden"></div>
       <div class="section-heading lower"><div><h2>My fees and receipts</h2><p class="muted">View your agreed fee, instalments, payments and receipt numbers.</p></div></div>
       <div id="student-fee-accounts"><div class="table-card table-heading">Loading fee information…</div></div>
+    `;
     section.append(exams);
   }
   return section;
