@@ -1,4 +1,5 @@
 import { handleStudyRequest } from "./study.js";
+import { handleFeeRequest } from "./fees.js";
 // DhyanshEdu Cloudflare Worker — consolidated working source
 // Transcribed from the Worker source supplied for the DhyanshEdu review.
 // Based on the Worker source supplied for this project; deployed version has not been independently diffed.
@@ -205,6 +206,9 @@ export default {
        "SELECT id,role FROM users WHERE id=? AND status='approved' AND deleted_at IS NULL"
      ).bind(user.id).first();
      if (!account) return reply({error:"Account is pending approval or inactive"},403,request);
+
+     const feeResponse = await handleFeeRequest(request,env,user,account,path,method);
+     if (feeResponse) return feeResponse;
 
      const studyResponse = await handleStudyRequest(request,env,user,account,path,method);
      if (studyResponse) return studyResponse;
