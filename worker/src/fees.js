@@ -1,4 +1,5 @@
-const json=(data,status,request)=>new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json","Cache-Control":"no-store","Vary":"Origin","Access-Control-Allow-Origin":request.headers.get("Origin")||""}});
+const ALLOWED_ORIGINS=["https://dhyanshedu-lab.github.io","https://dhyanshedu-exam-portal.dhyanshedu.workers.dev"];
+const json=(data,status,request)=>{const origin=request.headers.get("Origin")||"",headers={"Content-Type":"application/json","Cache-Control":"no-store","Vary":"Origin"};if(ALLOWED_ORIGINS.includes(origin))headers["Access-Control-Allow-Origin"]=origin;return new Response(JSON.stringify(data),{status,headers});};
 const fail=(message,status,request)=>json({error:message},status,request);
 const clean=(v,max=240)=>String(v??"").trim().slice(0,max);
 const money=v=>Number.isSafeInteger(v)&&v>0;
@@ -89,12 +90,22 @@ export async function handleFeeRequest(request,env,user,account,path,method){
     await env.DB.prepare("INSERT INTO fee_adjustments(id,fee_account_id,adjustment_type,amount_paise,reason,reference,created_by) VALUES(?,?,?,?,?,?,?)").bind(id(),fa.id,type,amount,reason,clean(b.reference,120)||null,admin.id).run();
     return json({success:true},201,request);
   }
+
+  const receiptMatch=path.match(/^\/api\/fee-receipts\/([0-9a-f-]+)$/i);
+  if(receiptMatch&&method==="GET"&&(admin||student)){
+    const receipt=await env.DB.prepare("SELECT fr.receipt_number,fr.issued_at,ft.amount_paise,ft.payment_method,ft.transaction_reference,fa.description,fa.amount_due_paise,u.full_name,u.email FROM fee_receipts fr JOIN fee_transactions ft ON ft.id=fr.transaction_id JOIN student_fee_accounts fa ON fa.id=ft.fee_account_id JOIN users u ON u.id=ft.student_id WHERE fr.id=? AND ft.status='recorded' AND (?='admin' OR ft.student_id=?)").bind(receiptMatch[1],account.role,user.id).first();
+    if(!receipt)return fail("Receipt not found or access denied.",404,request);
+    const esc=v=>String(v??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+    const html="<!doctype html><html><head><meta charset='utf-8'><title>"+esc(receipt.receipt_number)+"</title><style>body{font:16px Arial,sans-serif;max-width:720px;margin:40px auto;padding:24px;color:#18243a}h1{color:#0f2140}table{width:100%;border-collapse:collapse;margin-top:24px}td{padding:12px;border-bottom:1px solid #ddd}.total{font-size:22px;font-weight:bold}.muted{color:#667}</style></head><body><h1>DhyanshEdu</h1><p>Payment receipt</p><h2>"+esc(receipt.receipt_number)+"</h2><p>Student: "+esc(receipt.full_name)+" ("+esc(receipt.email)+")</p><table><tr><td>Description</td><td>"+esc(receipt.description)+"</td></tr><tr><td>Payment date</td><td>"+esc(receipt.issued_at)+"</td></tr><tr><td>Method</td><td>"+esc(receipt.payment_method)+"</td></tr><tr><td>Reference</td><td>"+esc(receipt.transaction_reference||"—")+"</td></tr><tr><td class='total'>Amount received</td><td class='total'>₹"+(Number(receipt.amount_paise)/100).toFixed(2)+"</td></tr></table><p class='muted'>This receipt confirms the manual payment recorded by DhyanshEdu.</p><button onclick='window.print()'>Print receipt</button></body></html>";
+    const origin=request.headers.get("Origin")||"",headers={"Content-Type":"text/html; charset=utf-8","Cache-Control":"private, no-store","Vary":"Origin"};if(ALLOWED_ORIGINS.includes(origin))headers["Access-Control-Allow-Origin"]=origin;
+    return new Response(html,{status:200,headers});
+  }
   if(path==="/api/student/fees"&&method==="GET"&&student){
     const rows=await env.DB.prepare("SELECT fa.id,fa.description,fa.amount_due_paise,fa.due_date,fa.status,fa.created_at,fp.name plan_name,(SELECT COALESCE(SUM(ft.amount_paise),0) FROM fee_transactions ft WHERE ft.fee_account_id=fa.id AND ft.status='recorded') paid_paise,(SELECT COALESCE(SUM(CASE WHEN adj.adjustment_type IN ('credit','waiver') THEN adj.amount_paise ELSE -adj.amount_paise END),0) FROM fee_adjustments adj WHERE adj.fee_account_id=fa.id) adjustment_credit_paise FROM student_fee_accounts fa LEFT JOIN fee_plans fp ON fp.id=fa.fee_plan_id WHERE fa.student_id=? ORDER BY fa.created_at DESC").bind(user.id).all();
     const accounts=rows.results||[];
     for(const a of accounts){
       const [transactions,installments]=await Promise.all([
-        env.DB.prepare("SELECT ft.amount_paise,ft.payment_method,ft.transaction_reference,ft.received_at,fr.receipt_number FROM fee_transactions ft LEFT JOIN fee_receipts fr ON fr.transaction_id=ft.id WHERE ft.fee_account_id=? AND ft.status='recorded' ORDER BY ft.received_at DESC").bind(a.id).all(),
+        env.DB.prepare("SELECT ft.amount_paise,ft.payment_method,ft.transaction_reference,ft.received_at,fr.id receipt_id,fr.receipt_number FROM fee_transactions ft LEFT JOIN fee_receipts fr ON fr.transaction_id=ft.id WHERE ft.fee_account_id=? AND ft.status='recorded' ORDER BY ft.received_at DESC").bind(a.id).all(),
         env.DB.prepare("SELECT installment_number,description,amount_paise,due_date,status FROM fee_installments WHERE fee_account_id=? ORDER BY installment_number").bind(a.id).all()
       ]);
       a.transactions=transactions.results||[];a.installments=installments.results||[];
