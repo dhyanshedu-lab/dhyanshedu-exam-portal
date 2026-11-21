@@ -63,8 +63,8 @@ This endpoint does not create the student Auth account. Use the existing Admin s
 ## Current limits / next work
 
 - Admin Enquiries & Demos UI is included in this branch.
-- Existing public website form has not yet been wired to the public endpoint.
+- Public website enquiry form is wired in the separate `dhyanshedu-site` feature branch; the Worker endpoint is not deployed yet.
 - Demo scheduling does not check availability, trigger teacher/student notifications, or collect demo feedback yet.
-- Admission list/create API exists; the admission management UI is still pending.
+- Admin admission list/create UI is included in this branch. It requires an existing approved student account; it does not create the Auth account or edit/withdraw an admission yet.
 - No Cloudflare Worker deployment, D1 migration, or production data changes have been made.
 - Before deployment, test the public insert and every admin route against a reviewed copy of the D1 schema, then configure rate limiting / abuse protection for public intake.
