@@ -165,7 +165,7 @@ function roleWorkspaceSection() {
     exams.innerHTML = `
       <div class="section-heading lower"><div><h2>Exam Centre</h2><p class="muted">View available exams, continue an attempt and check published results.</p></div></div>
       <div id="student-exam-list" class="table-card"><div class="table-heading"><h3>My exams</h3></div><div class="table-scroll"><table><thead><tr><th>Exam</th><th>Batch</th><th>Schedule</th><th>Duration</th><th>Status</th><th>Result</th><th>Action</th></tr></thead><tbody id="student-exams-body"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div>
-      <div id="student-attempt-panel" class="hidden"></div>`;
+      <div id="student-attempt-panel" class="hidden"></div><div id="student-result-panel" class="hidden"></div>`;
     section.append(exams);
   }
   return section;
@@ -234,14 +234,69 @@ async function loadStudentExams() {
        exam.result_visible?`${exam.marks_obtained} / ${exam.total_marks} (${exam.percentage}%)`:(exam.attempt_status==="submitted"?"Awaiting evaluation":"—")
       ].forEach(value=>{const cell=row.insertCell();cell.textContent=value??"—";});
       const action=row.insertCell();
-      if(exam.availability==="available"||exam.availability==="in_progress"){
+      if(exam.result_visible && exam.attempt_id){
+        const button=document.createElement("button");button.type="button";button.className="btn btn-primary btn-small";
+        button.textContent="View result";button.addEventListener("click",()=>loadStudentResult(exam.attempt_id));
+        action.append(button);
+      }else if(exam.availability==="available"||exam.availability==="in_progress"){
         const button=document.createElement("button");button.type="button";button.className="btn btn-primary btn-small";
         button.textContent=exam.availability==="in_progress"?"Continue":"Start exam";
         button.addEventListener("click",()=>startStudentExam(exam.id));
         action.append(button);
-      }else action.textContent=exam.availability==="upcoming"?"Not open yet":exam.availability==="evaluated"?"Submitted":"—";
+      }else action.textContent=exam.availability==="upcoming"?"Not open yet":exam.attempt_status==="submitted"?"Awaiting evaluation":"—";
     });
   }catch(error){body.replaceChildren();const row=body.insertRow();const cell=row.insertCell();cell.colSpan=7;cell.textContent=error.message;}
+}
+
+async function loadStudentResult(attemptId) {
+  const panel=$("#student-result-panel");if(!panel)return;
+  panel.classList.remove("hidden");panel.replaceChildren();
+  const loading=document.createElement("p");loading.textContent="Loading published result…";panel.append(loading);
+  try{
+    const data=await api(`/api/student/results/${encodeURIComponent(attemptId)}`);
+    const r=data.result,questions=data.questions||[];
+    panel.replaceChildren();
+    const card=document.createElement("section");card.className="table-card student-result-summary";
+    const heading=document.createElement("div");heading.className="section-heading lower";
+    const title=document.createElement("h2");title.textContent=r.exam_title;
+    const score=document.createElement("strong");score.className="student-result-score";score.textContent=`${r.marks_obtained} / ${r.total_marks} marks`;
+    const percentage=document.createElement("p");percentage.className="student-result-percentage";percentage.textContent=`${Number(r.percentage).toFixed(2)}% ${r.pass_marks==null?"":(Number(r.marks_obtained)>=Number(r.pass_marks)?"· Pass":"· Below pass marks")}`;
+    const submitted=document.createElement("p");submitted.className="muted";submitted.textContent=`Submitted: ${r.submitted_at?new Date(r.submitted_at).toLocaleString():"—"} · Published: ${r.published_at?new Date(r.published_at).toLocaleString():"—"}`;
+    heading.append(title);card.append(heading,score,percentage,submitted);panel.append(card);
+    const section=document.createElement("div");section.className="section-heading lower";
+    const subTitle=document.createElement("h2");subTitle.textContent="Question-wise review";section.append(subTitle);panel.append(section);
+    questions.forEach((q,index)=>{
+      const item=document.createElement("article");item.className="table-card student-result-question";
+      const h=document.createElement("h3");h.textContent=`Question ${index+1} · ${q.marks} marks`;
+      const prompt=document.createElement("p");prompt.textContent=q.question_text;item.append(h,prompt);
+      if(q.options?.length){
+        const list=document.createElement("ul");
+        q.options.forEach(o=>{
+          const li=document.createElement("li");
+          const selected=(q.selected_option_ids||[]).includes(o.id);
+          li.textContent=`${o.label}. ${o.text}${o.is_correct?" · Correct answer":selected?" · Your selection":""}`;
+          if(o.is_correct)li.classList.add("result-correct-option");
+          else if(selected)li.classList.add("result-selected-wrong");
+          list.append(li);
+        });item.append(list);
+      }
+      if(q.answer_text){
+        const answer=document.createElement("p");answer.className="student-result-answer";answer.textContent="Your answer: "+q.answer_text;item.append(answer);
+      }else if(!q.options?.length){
+        const answer=document.createElement("p");answer.className="student-result-answer";answer.textContent="No written answer submitted.";item.append(answer);
+      }
+      const mark=document.createElement("p");mark.className="student-result-marks";
+      mark.textContent=`Marks awarded: ${q.marks_awarded??0} / ${q.marks}${q.is_correct===1?" · Correct":q.is_correct===0?" · Incorrect":""}`;
+      item.append(mark);
+      if(q.teacher_feedback){
+        const feedback=document.createElement("div");feedback.className="student-teacher-feedback";
+        const label=document.createElement("strong");label.textContent="Teacher feedback";
+        const text=document.createElement("p");text.textContent=q.teacher_feedback;feedback.append(label,text);item.append(feedback);
+      }
+      panel.append(item);
+    });
+    panel.scrollIntoView({behavior:"smooth",block:"start"});
+  }catch(error){panel.replaceChildren();const message=document.createElement("p");message.className="message";message.textContent=error.message;panel.append(message);}
 }
 
 async function startStudentExam(examId) {
