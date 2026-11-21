@@ -28,3 +28,5 @@ jobs:
         run: node --check app.js
       - name: Check Cloudflare Worker syntax
         run: node --check worker/src/index.js
+      - name: Check study and assignment API syntax
+        run: node --check worker/src/study.js
