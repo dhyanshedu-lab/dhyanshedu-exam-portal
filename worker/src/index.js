@@ -300,7 +300,7 @@ export default {
          ).bind(exam.id).all();
          const answers=await env.DB.prepare("SELECT exam_question_id,answer_text,selected_option_ids FROM student_answers WHERE attempt_id=?").bind(attempt.id).all();
          const answerMap=new Map((answers.results||[]).map(x=>[x.exam_question_id,x]));
-         return reply({success:true,attempt:{...attempt,duration_minutes:exam.duration_minutes,questions:(questions.results||[]).map(q=>({
+         return reply({success:true,attempt:{...attempt,title:exam.title,ends_at:exam.ends_at,duration_minutes:exam.duration_minutes,questions:(questions.results||[]).map(q=>({
            ...q,options:(options.results||[]).filter(o=>o.exam_question_id===q.exam_question_id).map(o=>({id:o.id,label:o.option_label,text:o.option_text})),
            answer:answerMap.get(q.exam_question_id)?.answer_text||"",
            selected_option_ids:JSON.parse(answerMap.get(q.exam_question_id)?.selected_option_ids||"[]")
