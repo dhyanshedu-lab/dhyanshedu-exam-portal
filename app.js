@@ -120,6 +120,43 @@ function roleWorkspaceSection() {
       <div class="table-scroll"><table><thead><tr><th>Class</th><th>Batch</th><th>Schedule</th><th>Status</th><th>Meeting</th></tr></thead><tbody id="my-live-list"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
     </div>`;
   $("#dashboard-view .content").append(section);
+  if (profile?.role === "teacher") {
+    const authoring = document.createElement("div");
+    authoring.id = "teacher-authoring";
+    authoring.innerHTML = `
+      <div class="section-heading lower"><div><h2>Question bank</h2><p class="muted">Create questions for the batches assigned to you.</p></div></div>
+      <div class="form-card">
+        <form id="teacher-question-form" class="form-grid">
+          <div><label for="question-batch">Assigned batch</label><select id="question-batch" required><option value="">Select batch</option></select></div>
+          <div><label for="question-type">Question type</label><select id="question-type"><option value="mcq">Multiple choice (one answer)</option><option value="multiple_select">Multiple select</option><option value="numerical">Numerical</option><option value="short_answer">Short answer</option><option value="long_answer">Long answer</option></select></div>
+          <div><label for="question-topic">Topic</label><input id="question-topic" maxlength="160" placeholder="e.g. Quadratic equations"></div>
+          <div><label for="question-difficulty">Difficulty</label><select id="question-difficulty"><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard</option></select></div>
+          <div><label for="question-marks">Default marks</label><input id="question-marks" type="number" min="0.25" step="0.25" value="1" required></div>
+          <div class="full"><label for="question-text">Question</label><textarea id="question-text" rows="3" required maxlength="8000" placeholder="Enter the question"></textarea></div>
+          <div class="full" id="question-options-wrap"><label for="question-options">Answer options (one per line)</label><textarea id="question-options" rows="4" placeholder="Option A&#10;Option B&#10;Option C&#10;Option D"></textarea><label for="question-correct">Correct option labels (e.g. A or A,C)</label><input id="question-correct" placeholder="A"></div>
+          <div class="full"><label for="question-explanation">Explanation (optional)</label><textarea id="question-explanation" rows="2" maxlength="4000"></textarea></div>
+          <div><button class="btn btn-primary" type="submit" id="save-question-button">Save question</button></div>
+        </form><p id="question-form-message" class="message"></p>
+      </div>
+      <div class="table-card"><div class="table-heading"><h3>My questions</h3></div><div class="table-scroll"><table><thead><tr><th>Question</th><th>Type</th><th>Topic</th><th>Difficulty</th><th>Marks</th></tr></thead><tbody id="teacher-question-list"><tr><td colspan="5">Loading…</td></tr></tbody></table></div></div>
+
+      <div class="section-heading lower"><div><h2>Exam builder</h2><p class="muted">Create a draft or scheduled exam for one of your assigned batches.</p></div></div>
+      <div class="form-card">
+        <form id="teacher-exam-form" class="form-grid">
+          <div><label for="exam-title">Exam title</label><input id="exam-title" maxlength="180" required placeholder="e.g. Algebra Unit Test"></div>
+          <div><label for="exam-batch">Assigned batch</label><select id="exam-batch" required><option value="">Select batch</option></select></div>
+          <div><label for="exam-duration">Duration (minutes)</label><input id="exam-duration" type="number" min="1" max="600" value="60" required></div>
+          <div><label for="exam-pass-marks">Pass marks (optional)</label><input id="exam-pass-marks" type="number" min="0" step="0.25"></div>
+          <div><label for="exam-start">Start date/time (optional)</label><input id="exam-start" type="datetime-local"></div>
+          <div><label for="exam-end">End date/time (optional)</label><input id="exam-end" type="datetime-local"></div>
+          <div class="full"><label for="exam-description">Instructions (optional)</label><textarea id="exam-description" rows="2" maxlength="4000"></textarea></div>
+          <div class="full"><label for="exam-questions">Select questions (Ctrl/Cmd-click for multiple)</label><select id="exam-questions" multiple size="7" required></select><small class="muted">Questions must belong to your question bank and match the selected batch's subject/class.</small></div>
+          <div><button class="btn btn-primary" type="submit" id="save-exam-button">Create exam</button></div>
+        </form><p id="exam-form-message" class="message"></p>
+      </div>
+      <div class="table-card"><div class="table-heading"><h3>My exams</h3></div><div class="table-scroll"><table><thead><tr><th>Exam</th><th>Batch</th><th>Questions</th><th>Total marks</th><th>Schedule</th><th>Status</th><th>Action</th></tr></thead><tbody id="teacher-exam-list"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div>`;
+    section.append(authoring);
+  }
   return section;
 }
 
@@ -156,6 +193,72 @@ function safeMeetingLink(raw) {
   } catch {
     return "—";
   }
+}
+
+let teacherWorkspaceBatches = [];
+let teacherWorkspaceQuestions = [];
+
+function populateTeacherBatchSelects() {
+  ["question-batch","exam-batch"].forEach(id => {
+    const select=$("#"+id); if(!select) return;
+    select.replaceChildren();
+    const first=document.createElement("option"); first.value=""; first.textContent="Select batch"; select.append(first);
+    teacherWorkspaceBatches.forEach(batch=>{
+      const option=document.createElement("option"); option.value=batch.id;
+      option.textContent=`${batch.batch_name} — ${batch.subject_name||"Subject"}`;
+      select.append(option);
+    });
+  });
+}
+
+function refreshExamQuestionOptions() {
+  const batch=teacherWorkspaceBatches.find(x=>x.id===$("#exam-batch").value);
+  const select=$("#exam-questions"); if(!select) return;
+  select.replaceChildren();
+  const questions=teacherWorkspaceQuestions.filter(q=>
+    batch && (q.subject_id==null || String(q.subject_id)===String(batch.subject_id)) &&
+    (q.class_id==null || String(q.class_id)===String(batch.class_id))
+  );
+  questions.forEach(q=>{
+    const option=document.createElement("option"); option.value=q.id;
+    option.textContent=`${q.question_text.slice(0,115)} · ${q.question_type} · ${q.default_marks} marks`;
+    select.append(option);
+  });
+}
+
+async function loadTeacherAuthoring() {
+  const [questions,exams]=await Promise.all([
+    api("/api/teacher/questions"),api("/api/teacher/exams")
+  ]);
+  teacherWorkspaceQuestions=questions.questions||[];
+  const questionBody=$("#teacher-question-list");
+  addWorkspaceRow(questionBody,teacherWorkspaceQuestions.map(q=>[
+    q.question_text,q.question_type,q.topic,q.difficulty,q.default_marks
+  ]),"No questions yet. Create your first question above.",5);
+  refreshExamQuestionOptions();
+
+  const examBody=$("#teacher-exam-list");
+  examBody.replaceChildren();
+  const items=exams.exams||[];
+  if(!items.length){
+    const row=examBody.insertRow();const cell=row.insertCell();cell.colSpan=7;cell.textContent="No exams created yet.";return;
+  }
+  items.forEach(exam=>{
+    const row=examBody.insertRow();
+    [exam.title,exam.batch_name,exam.question_count,exam.total_marks,
+     exam.starts_at?new Date(exam.starts_at).toLocaleString():"Not scheduled",exam.status].forEach(v=>{const cell=row.insertCell();cell.textContent=v??"—";});
+    const action=row.insertCell();
+    if(["draft","scheduled"].includes(exam.status)){
+      const button=document.createElement("button");button.className="btn btn-primary btn-small";button.textContent="Publish";
+      button.addEventListener("click",async()=>{
+        if(!confirm("Publish this exam so eligible students can access it according to its schedule?"))return;
+        button.disabled=true;
+        try{await api(`/api/teacher/exams/${encodeURIComponent(exam.id)}/publish`,{method:"POST"});await loadTeacherAuthoring();}
+        catch(error){alert(error.message);button.disabled=false;}
+      });
+      action.append(button);
+    } else action.textContent="—";
+  });
 }
 
 async function loadRoleWorkspace(role) {
@@ -201,6 +304,17 @@ async function loadRoleWorkspace(role) {
       item.starts_at ? new Date(item.starts_at).toLocaleString() : "—",
       item.status, safeMeetingLink(item.meeting_url)
     ]), "No scheduled classes available.", 5);
+
+    if (role === "teacher") {
+      teacherWorkspaceBatches = batches.batches || [];
+      populateTeacherBatchSelects();
+      $("#question-type").addEventListener("change",()=>{
+        const enabled=["mcq","multiple_select"].includes($("#question-type").value);
+        $("#question-options-wrap").classList.toggle("hidden",!enabled);
+      });
+      $("#exam-batch").addEventListener("change",refreshExamQuestionOptions);
+      await loadTeacherAuthoring();
+    }
   } catch (error) {
     const message = document.createElement("p");
     message.className = "message";
@@ -622,6 +736,51 @@ async function loadAdminPage(name) {
     if (name==="teachers") await loadTeachers();
   } catch(error) { $("#dashboard-message").textContent=error.message; }
 }
+
+$("#teacher-question-form")?.addEventListener("submit",async e=>{
+  e.preventDefault();
+  const button=$("#save-question-button"), message=$("#question-form-message");
+  const batch=teacherWorkspaceBatches.find(x=>x.id===$("#question-batch").value);
+  if(!batch){message.textContent="Select one of your assigned batches.";return;}
+  const type=$("#question-type").value;
+  const lines=$("#question-options").value.split("\\n").map(x=>x.trim()).filter(Boolean);
+  const labels=$("#question-correct").value.toUpperCase().split(",").map(x=>x.trim()).filter(Boolean);
+  const options=lines.map((option_text,i)=>({option_text,is_correct:labels.includes(String.fromCharCode(65+i))}));
+  button.disabled=true;message.textContent="Saving question…";
+  try{
+    await api("/api/teacher/questions",{method:"POST",body:JSON.stringify({
+      question_type:type,question_text:$("#question-text").value.trim(),topic:$("#question-topic").value.trim(),
+      difficulty:$("#question-difficulty").value,default_marks:Number($("#question-marks").value),
+      subject_id:batch.subject_id,class_id:batch.class_id,explanation:$("#question-explanation").value.trim(),
+      options:["mcq","multiple_select"].includes(type)?options:[]
+    })});
+    e.target.reset();$("#question-marks").value="1";$("#question-options-wrap").classList.remove("hidden");
+    message.textContent="Question saved to your question bank.";
+    await loadTeacherAuthoring();
+  }catch(error){message.textContent=error.message;}
+  finally{button.disabled=false;}
+});
+
+$("#teacher-exam-form")?.addEventListener("submit",async e=>{
+  e.preventDefault();
+  const button=$("#save-exam-button"),message=$("#exam-form-message");
+  const questionIds=Array.from($("#exam-questions").selectedOptions).map(x=>x.value);
+  const start=$("#exam-start").value?new Date($("#exam-start").value).toISOString():null;
+  const end=$("#exam-end").value?new Date($("#exam-end").value).toISOString():null;
+  button.disabled=true;message.textContent="Creating exam…";
+  try{
+    const result=await api("/api/teacher/exams",{method:"POST",body:JSON.stringify({
+      title:$("#exam-title").value.trim(),description:$("#exam-description").value.trim(),
+      batch_id:$("#exam-batch").value,duration_minutes:Number($("#exam-duration").value),
+      pass_marks:$("#exam-pass-marks").value===""?null:Number($("#exam-pass-marks").value),
+      starts_at:start,ends_at:end,question_ids:questionIds
+    })});
+    e.target.reset();$("#exam-duration").value="60";
+    message.textContent=`Exam created as ${result.status}. Total marks: ${result.total_marks}. Review it below and publish when ready.`;
+    await loadTeacherAuthoring();
+  }catch(error){message.textContent=error.message;}
+  finally{button.disabled=false;}
+});
 
 $("#academic-year-form").addEventListener("submit",async e=>{
   e.preventDefault();
