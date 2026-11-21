@@ -1165,6 +1165,10 @@ async function loadAdminFees(){
     const [boot,plans,accounts]=await Promise.all([api("/api/admin/fees/bootstrap"),api("/api/admin/fee-plans"),api("/api/admin/fee-accounts")]);
     fillSelect($("#fee-account-student"),boot.students||[],x=>x.full_name+" · "+x.email,"Select approved student");
     fillSelect($("#fee-account-plan"),boot.fee_plans||[],x=>x.name+" · "+rupees(x.amount_paise),"Custom agreed fee");
+    fillSelect($("#fee-plan-curriculum"),boot.curricula||[],x=>x.name,"Any curriculum");
+    fillSelect($("#fee-plan-class"),boot.classes||[],x=>x.class_name,"Any class");
+    fillSelect($("#fee-plan-subject"),boot.subjects||[],x=>x.subject_name,"Any subject");
+    fillSelect($("#fee-plan-batch"),boot.batches||[],x=>x.batch_name,"Any batch");
     plansBody.replaceChildren();
     (plans.fee_plans||[]).forEach(p=>{
       const tr=plansBody.insertRow();[p.name,p.pricing_scope,p.billing_frequency,rupees(p.amount_paise),[p.effective_from,p.effective_to].filter(Boolean).join(" – ")||"—",p.public_status].forEach(v=>addCell(tr,v));
@@ -1565,7 +1569,7 @@ document.addEventListener("submit",async e=>{
 document.addEventListener("submit",async e=>{
   if(e.target.id==="fee-plan-form"){
     e.preventDefault();const f=e.target,msg=$("#fee-plan-message");msg.textContent="Saving draft…";
-    try{await api("/api/admin/fee-plans",{method:"POST",body:JSON.stringify({name:$("#fee-plan-name").value.trim(),amount_paise:Math.round(Number($("#fee-plan-amount").value)*100),billing_frequency:$("#fee-plan-frequency").value,pricing_scope:$("#fee-plan-scope").value,batch_type:$("#fee-plan-batch-type").value||null,effective_from:$("#fee-plan-effective-from").value||null,effective_to:$("#fee-plan-effective-to").value||null,description:$("#fee-plan-description").value,inclusions:$("#fee-plan-inclusions").value,terms:$("#fee-plan-terms").value})});f.reset();msg.textContent="Fee plan saved as draft. Publish it when ready.";await loadAdminFees();}catch(err){msg.textContent=err.message;}
+    try{await api("/api/admin/fee-plans",{method:"POST",body:JSON.stringify({name:$("#fee-plan-name").value.trim(),amount_paise:Math.round(Number($("#fee-plan-amount").value)*100),billing_frequency:$("#fee-plan-frequency").value,pricing_scope:$("#fee-plan-scope").value,batch_type:$("#fee-plan-batch-type").value||null,curriculum_id:$("#fee-plan-curriculum").value||null,class_id:$("#fee-plan-class").value||null,subject_id:$("#fee-plan-subject").value||null,batch_id:$("#fee-plan-batch").value||null,effective_from:$("#fee-plan-effective-from").value||null,effective_to:$("#fee-plan-effective-to").value||null,description:$("#fee-plan-description").value,inclusions:$("#fee-plan-inclusions").value,terms:$("#fee-plan-terms").value})});f.reset();msg.textContent="Fee plan saved as draft. Publish it when ready.";await loadAdminFees();}catch(err){msg.textContent=err.message;}
   }
   if(e.target.id==="fee-account-form"){
     e.preventDefault();const f=e.target,msg=$("#fee-account-message");msg.textContent="Creating student fee account…";
