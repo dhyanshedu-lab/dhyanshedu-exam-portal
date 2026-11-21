@@ -96,7 +96,7 @@ function showPendingApproval() {
 }
 
 function page(name) {
-  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students", "exam-monitoring", "live-classes", "fees", "enquiries"];
+  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students", "exam-monitoring", "live-classes", "fees", "enquiries", "admissions"];
   for (const pageName of pages) {
     const section = $(`#${pageName}-page`);
     if (section) section.classList.toggle("hidden", pageName !== name);
@@ -1354,6 +1354,36 @@ function editDemoBooking(item){
   api("/api/admin/demos/"+encodeURIComponent(item.id),{method:"PATCH",body:JSON.stringify({status:item.status,assigned_teacher_id:teacherId||undefined,confirmed_starts_at:start||undefined,confirmed_ends_at:end||undefined,meeting_url:url||undefined})}).then(loadAdminEnquiries).catch(e=>alert(e.message));
 }
 
+let admissionStudentCache = [];
+async function loadAdminAdmissions() {
+  const body=$("#admission-list");
+  if(!body) return;
+  body.innerHTML='<tr><td colspan="8">Loading admissions…</td></tr>';
+  try {
+    const [admissionData,studentData,classData,subjectData,enquiryData]=await Promise.all([
+      api("/api/admin/admissions"),api("/api/students"),api("/api/classes"),api("/api/subjects"),api("/api/admin/enquiries")
+    ]);
+    admissionStudentCache=(studentData.students||[]).filter(s=>s.status==="approved"&&!s.deleted_at);
+    const fill=(selector,items,label,placeholder)=>{
+      const el=$(selector); if(!el)return;
+      el.replaceChildren(); const first=document.createElement("option");first.value="";first.textContent=placeholder;el.append(first);
+      items.forEach(item=>{const o=document.createElement("option");o.value=item.id;o.textContent=label(item);el.append(o);});
+    };
+    fill("#admission-student",admissionStudentCache,s=>s.full_name+" · "+s.email,"Select approved student");
+    fill("#admission-class",(classData.classes||[]).filter(x=>x.status==="active"),x=>x.class_name+(x.section?" - "+x.section:""),"Select class");
+    fill("#admission-subject",(subjectData.subjects||[]).filter(x=>x.status==="active"),x=>x.subject_name,"Select subject");
+    fill("#admission-enquiry",(enquiryData.enquiries||[]).filter(x=>x.status!=="converted"),x=>x.student_name+" · "+x.phone,"No linked enquiry");
+    body.replaceChildren();
+    (admissionData.admissions||[]).forEach(a=>{
+      const tr=body.insertRow();
+      [a.admission_number,a.student_name,a.email,a.admission_date,a.class_id||"—",a.subject_id||"—",a.learning_mode||"—",a.status].forEach(v=>{const td=tr.insertCell();td.textContent=v??"—";});
+    });
+    if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=8;td.textContent="No admissions recorded yet.";}
+    $("#admission-message").textContent="";
+  } catch(e) {
+    body.innerHTML='<tr><td colspan="8">Could not load admissions: '+safeText(e.message)+'</td></tr>';
+  }
+}
 async function loadAdminPage(name) {
   try {
     if (name==="classes") await loadClasses();
@@ -1366,7 +1396,7 @@ async function loadAdminPage(name) {
     if (name==="live-classes") await loadAdminLiveClasses();
     if (name==="fees") await loadAdminFees();
     if (name==="enquiries") await loadAdminEnquiries();
-    if (name==="enquiries") await loadAdminEnquiries();
+    if (name==="admissions") await loadAdminAdmissions();
   } catch(error) { $("#dashboard-message").textContent=error.message; }
 }
 
@@ -1604,6 +1634,32 @@ $("#signout-button").addEventListener("click", async () => {
   showLogin("You have signed out.");
 });
 
+$("#admission-form")?.addEventListener("submit",async e=>{
+  e.preventDefault();
+  const button=$("#save-admission-button");button.disabled=true;
+  try{
+    const fee=($("#admission-agreed-fee").value||"").trim();
+    const payload={
+      student_id:$("#admission-student").value,
+      enquiry_id:$("#admission-enquiry").value||null,
+      admission_number:$("#admission-number").value.trim(),
+      admission_date:$("#admission-date").value,
+      class_id:$("#admission-class").value||null,
+      subject_id:$("#admission-subject").value||null,
+      learning_mode:$("#admission-mode").value||null,
+      agreed_fee_amount_paise:fee===""?null:Math.round(Number(fee)*100),
+      notes:$("#admission-notes").value.trim()
+    };
+    if(fee!==""&&(!Number.isFinite(Number(fee))||Number(fee)<0))throw new Error("Enter a valid agreed fee amount.");
+    await api("/api/admin/admissions",{method:"POST",body:JSON.stringify(payload)});
+    $("#admission-form").reset();
+    $("#admission-date").value=new Date().toISOString().slice(0,10);
+    $("#admission-message").textContent="Admission created. Student account was not created; select an already approved student.";
+    await loadAdminAdmissions();
+  }catch(err){$("#admission-message").textContent=err.message;}
+  finally{button.disabled=false;}
+});
+$("#refresh-admissions")?.addEventListener("click",loadAdminAdmissions);
 $("#refresh-enquiries")?.addEventListener("click",loadAdminEnquiries);
 $("#apply-enquiry-filter")?.addEventListener("click",loadAdminEnquiries);
 $("#new-demo-button")?.addEventListener("click",()=>showDemoForm());
