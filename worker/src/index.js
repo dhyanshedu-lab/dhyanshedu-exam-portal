@@ -498,7 +498,7 @@ export default {
          ).bind(evaluationMatch[1],user.id,user.id).first();
          if(!attempt) return reply({error:"Evaluation not found or you are not assigned to this exam."},404,request);
          const rows=await env.DB.prepare(
-           "SELECT eq.id exam_question_id,eq.marks,eq.negative_marks,eq.sort_order,q.question_type,q.question_text,q.explanation,sa.answer_text,sa.selected_option_ids,sa.is_correct,sa.marks_awarded FROM exam_questions eq JOIN questions q ON q.id=eq.question_id LEFT JOIN student_answers sa ON sa.exam_question_id=eq.id AND sa.attempt_id=? WHERE eq.exam_id=? ORDER BY eq.sort_order"
+           "SELECT eq.id exam_question_id,eq.marks,eq.negative_marks,eq.sort_order,q.question_type,q.question_text,q.explanation,sa.answer_text,sa.selected_option_ids,sa.is_correct,sa.marks_awarded,sa.teacher_feedback FROM exam_questions eq JOIN questions q ON q.id=eq.question_id LEFT JOIN student_answers sa ON sa.exam_question_id=eq.id AND sa.attempt_id=? WHERE eq.exam_id=? ORDER BY eq.sort_order"
          ).bind(attempt.attempt_id,attempt.exam_id).all();
          const options=await env.DB.prepare(
            "SELECT qo.question_id,qo.option_label,qo.option_text,qo.is_correct FROM exam_questions eq JOIN question_options qo ON qo.question_id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.sort_order,qo.sort_order"
@@ -534,7 +534,7 @@ export default {
              return reply({error:"Each manual grade must reference a unique written/numerical question and be between zero and its maximum marks."},400,request);
            }
            seen.add(qid);manualTotal+=marks;
-           statements.push(env.DB.prepare("UPDATE student_answers SET marks_awarded=?,is_correct=NULL WHERE attempt_id=? AND exam_question_id=?").bind(marks,attemptId,qid));
+           statements.push(env.DB.prepare("INSERT INTO student_answers(id,attempt_id,exam_question_id,marks_awarded,is_correct,teacher_feedback,answered_at) VALUES(?,?,?, ?,NULL,?,datetime('now')) ON CONFLICT(attempt_id,exam_question_id) DO UPDATE SET marks_awarded=excluded.marks_awarded,is_correct=NULL,teacher_feedback=excluded.teacher_feedback").bind(crypto.randomUUID(),attemptId,qid,marks,text(grade.teacher_feedback,2000)||null));
          }
          const remaining=validRows.results.filter(q=>["numerical","short_answer","long_answer"].includes(q.question_type));
          if(seen.size!==remaining.length) return reply({error:"Grade every numerical and written question before completing evaluation."},400,request);
