@@ -54,6 +54,23 @@ async function api(path, opts = {}) {
   return d;
 }
 
+async function apiForm(path, formData) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("Please sign in again.");
+  const r = await fetch(API_URL + path, { method:"POST", headers:{Authorization:`Bearer ${session.access_token}`}, body:formData });
+  const d = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(d.error || `Request failed (${r.status})`);
+  return d;
+}
+async function downloadPortalFile(path, filename) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("Please sign in again.");
+  const r=await fetch(API_URL+path,{headers:{Authorization:`Bearer ${session.access_token}`}});
+  if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||"Download failed.");}
+  const blob=await r.blob(),url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download=filename||"download";document.body.append(a);a.click();a.remove();URL.revokeObjectURL(url);
+}
+
 function hideAllViews() {
   ["login-view", "invite-view", "pending-view", "dashboard-view"]
     .forEach(id => {
@@ -157,6 +174,27 @@ function roleWorkspaceSection() {
       <div class="section-heading lower"><div><h2>Evaluation Centre</h2><p class="muted">Review submitted answers, award marks, add feedback and publish results.</p></div></div>
       <div class="table-card"><div class="table-heading"><h3>Student submissions</h3></div><div class="table-scroll"><table><thead><tr><th>Student</th><th>Exam</th><th>Batch</th><th>Submitted</th><th>Status</th><th>Score</th><th>Action</th></tr></thead><tbody id="teacher-evaluation-list"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div>
       <div id="teacher-evaluation-panel" class="hidden"></div>`;
+
+      <div class="section-heading lower"><div><h2>Study materials</h2><p class="muted">Upload worksheets, notes and PDFs for your assigned batches.</p></div></div>
+      <div class="form-card"><form id="teacher-material-form" class="form-grid">
+        <div><label for="material-title">Material title</label><input id="material-title" required maxlength="180" placeholder="e.g. Algebra worksheet 1"></div>
+        <div><label for="material-batch">Assigned batch</label><select id="material-batch" required><option value="">Select batch</option></select></div>
+        <div class="full"><label for="material-description">Description</label><textarea id="material-description" rows="2" maxlength="2000"></textarea></div>
+        <div class="full"><label for="material-file">File (max 12 MB)</label><input id="material-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.docx,.pptx,.xlsx" required></div>
+        <div><button class="btn btn-primary" type="submit">Upload material</button></div>
+      </form><p id="material-form-message" class="message"></p></div>
+      <div class="section-heading lower"><div><h2>Assignments</h2><p class="muted">Publish homework for an assigned batch and review student submissions.</p></div></div>
+      <div class="form-card"><form id="teacher-assignment-form" class="form-grid">
+        <div><label for="assignment-title">Assignment title</label><input id="assignment-title" required maxlength="180" placeholder="e.g. Chapter 4 homework"></div>
+        <div><label for="assignment-batch">Assigned batch</label><select id="assignment-batch" required><option value="">Select batch</option></select></div>
+        <div><label for="assignment-due">Due date and time</label><input id="assignment-due" type="datetime-local"></div>
+        <div><label for="assignment-max-marks">Maximum marks</label><input id="assignment-max-marks" type="number" min="0" step="0.5"></div>
+        <div class="full"><label for="assignment-instructions">Instructions</label><textarea id="assignment-instructions" rows="3" maxlength="6000"></textarea></div>
+        <div class="full"><label for="assignment-attachment">Assignment file (optional, max 12 MB)</label><input id="assignment-attachment" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.docx,.pptx,.xlsx"></div>
+        <div><button class="btn btn-primary" type="submit">Publish assignment</button></div>
+      </form><p id="teacher-assignment-message" class="message"></p></div>
+      <div class="table-card"><div class="table-heading"><h3>Published assignments</h3></div><div class="table-scroll"><table><thead><tr><th>Assignment</th><th>Batch</th><th>Due</th><th>Status</th><th>Submissions</th></tr></thead><tbody id="teacher-assignment-list"><tr><td colspan="5">Loading…</td></tr></tbody></table></div></div>
+      <div id="teacher-submissions-panel" class="hidden"></div>
     section.append(authoring);
   } else if (profile?.role === "student") {
     const exams = document.createElement("div");
@@ -165,6 +203,10 @@ function roleWorkspaceSection() {
       <div class="section-heading lower"><div><h2>Exam Centre</h2><p class="muted">View available exams, continue an attempt and check published results.</p></div></div>
       <div id="student-exam-list" class="table-card"><div class="table-heading"><h3>My exams</h3></div><div class="table-scroll"><table><thead><tr><th>Exam</th><th>Batch</th><th>Schedule</th><th>Duration</th><th>Status</th><th>Result</th><th>Action</th></tr></thead><tbody id="student-exams-body"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div>
       <div id="student-attempt-panel" class="hidden"></div><div id="student-result-panel" class="hidden"></div>`;
+
+      <div class="section-heading lower"><div><h2>Assignments and homework</h2><p class="muted">Read instructions, download worksheets and submit your completed work.</p></div></div>
+      <div class="table-card"><div class="table-heading"><h3>My assignments</h3></div><div class="table-scroll"><table><thead><tr><th>Assignment</th><th>Batch</th><th>Due</th><th>Status</th><th>Marks / Feedback</th><th>Action</th></tr></thead><tbody id="student-assignment-list"><tr><td colspan="6">Loading…</td></tr></tbody></table></div></div>
+      <div id="student-submission-panel" class="hidden"></div>
     section.append(exams);
   }
   return section;
@@ -539,6 +581,40 @@ async function loadTeacherAuthoring() {
   });
 }
 
+
+async function loadLearningTasks(role){
+  if(role==="teacher"){
+    const [list]=await Promise.all([api("/api/my/assignments")]);
+    const batchOptions=teacherWorkspaceBatches||[];
+    ["#material-batch","#assignment-batch"].forEach(selector=>{const el=$(selector);if(!el)return;el.replaceChildren();const first=document.createElement("option");first.value="";first.textContent="Select batch";el.append(first);batchOptions.forEach(b=>{const o=document.createElement("option");o.value=b.id;o.textContent=b.batch_name;el.append(o);});});
+    const body=$("#teacher-assignment-list");body.replaceChildren();
+    (list.assignments||[]).forEach(a=>{const tr=body.insertRow();[a.title,a.batch_name||a.class_name,a.due_at?new Date(a.due_at).toLocaleString():"—",a.status].forEach(v=>{const td=tr.insertCell();td.textContent=v||"—";});const td=tr.insertCell(),btn=document.createElement("button");btn.className="btn btn-secondary btn-small";btn.textContent="Review submissions";btn.addEventListener("click",()=>openTeacherSubmissions(a.id,a.title));td.append(btn);});
+    if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=5;td.textContent="No assignments created yet.";}
+  }else{
+    const data=await api("/api/student/assignments"),body=$("#student-assignment-list");body.replaceChildren();
+    (data.assignments||[]).forEach(a=>{const tr=body.insertRow();[a.title,a.batch_name,a.due_at?new Date(a.due_at).toLocaleString():"—",a.submission_status||"Not submitted",a.marks_awarded==null?(a.teacher_feedback||"—"):(a.marks_awarded+(a.teacher_feedback?" · "+a.teacher_feedback:""))].forEach(v=>{const td=tr.insertCell();td.textContent=v??"—";});
+      const action=tr.insertCell();(data.attachments||[]).filter(f=>f.assignment_id===a.id).forEach(f=>{const b=document.createElement("button");b.className="btn btn-secondary btn-small";b.textContent="Download "+f.file_name;b.addEventListener("click",()=>downloadPortalFile("/api/assignments/"+a.id+"/attachments/"+f.id+"/download",f.file_name).catch(e=>alert(e.message)));action.append(b);});
+      const submit=document.createElement("button");submit.className="btn btn-primary btn-small";submit.textContent=a.submission_status==="evaluated"?"View feedback":"Submit work";submit.addEventListener("click",()=>openStudentSubmission(a));action.append(submit);
+    });
+    if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=6;td.textContent="No assignments have been published for your batches.";}
+  }
+}
+async function openTeacherSubmissions(id,title){
+  const panel=$("#teacher-submissions-panel");panel.classList.remove("hidden");panel.innerHTML="<div class='form-card'><h3>Submissions · "+title+"</h3><p>Loading student work…</p></div>";
+  try{const d=await api("/api/teacher/assignments/"+encodeURIComponent(id)+"/submissions");panel.innerHTML="<div class='form-card'><h3>Submissions · "+title+"</h3><div class='table-scroll'><table><thead><tr><th>Student</th><th>Submitted</th><th>Answer</th><th>Attachments</th><th>Marks</th><th>Feedback</th><th>Action</th></tr></thead><tbody id='teacher-submission-rows'></tbody></table></div></div>";
+    const body=$("#teacher-submission-rows");(d.submissions||[]).forEach(s=>{const tr=body.insertRow();[s.student_name,s.submitted_at?new Date(s.submitted_at).toLocaleString():"—",s.answer_text||"—"].forEach(v=>{const td=tr.insertCell();td.textContent=v;});
+      const files=body.rows[body.rows.length-1].insertCell();(d.attachments||[]).filter(f=>f.submission_id===s.submission_id).forEach(f=>{const b=document.createElement("button");b.className="btn btn-secondary btn-small";b.textContent=f.file_name;b.addEventListener("click",()=>downloadPortalFile("/api/submissions/"+s.submission_id+"/attachments/"+f.id+"/download",f.file_name).catch(e=>alert(e.message)));files.append(b);});
+      const marks=tr.insertCell(),mi=document.createElement("input");mi.type="number";mi.min="0";mi.step="0.5";mi.max=d.assignment.max_marks??"";mi.value=s.marks_awarded??"";marks.append(mi);
+      const feedback=tr.insertCell(),fi=document.createElement("textarea");fi.rows=2;fi.value=s.teacher_feedback||"";feedback.append(fi);
+      const action=tr.insertCell(),btn=document.createElement("button");btn.className="btn btn-primary btn-small";btn.textContent="Save grade";btn.addEventListener("click",async()=>{try{await api("/api/teacher/submissions/"+s.submission_id+"/grade",{method:"POST",body:JSON.stringify({marks_awarded:Number(mi.value),teacher_feedback:fi.value})});btn.textContent="Saved";}catch(e){alert(e.message);}});action.append(btn);
+    });
+    if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=7;td.textContent="No student submissions yet.";}
+  }catch(e){panel.textContent=e.message;}
+}
+function openStudentSubmission(a){
+  const panel=$("#student-submission-panel");panel.classList.remove("hidden");panel.innerHTML="<div class='form-card'><h3>Submit · "+a.title+"</h3><p class='muted'>"+(a.instructions||"Upload your completed worksheet or enter your answer below.")+"</p><form id='student-assignment-submit' class='form-grid' data-assignment-id='"+a.id+"'><div class='full'><label for='student-assignment-answer'>Answer / comments</label><textarea id='student-assignment-answer' rows='4' maxlength='8000'></textarea></div><div class='full'><label for='student-assignment-file'>Completed work (PDF, image, TXT or DOCX; max 12 MB)</label><input id='student-assignment-file' type='file' accept='.pdf,.jpg,.jpeg,.png,.webp,.txt,.docx'></div><div><button class='btn btn-primary' type='submit'>Submit assignment</button></div></form><p id='student-assignment-message' class='message'></p><p class='muted'>Current status: "+(a.submission_status||"Not submitted")+(a.teacher_feedback?" · Teacher feedback: "+a.teacher_feedback:"")+"</p></div>";
+}
+
 async function loadRoleWorkspace(role) {
   const section = roleWorkspaceSection();
   $("#role-workspace-heading").textContent = role === "teacher" ? "Teacher workspace" : "Student workspace";
@@ -589,8 +665,10 @@ async function loadRoleWorkspace(role) {
       $("#exam-batch").addEventListener("change",refreshExamQuestionOptions);
       await loadTeacherAuthoring();
       await loadTeacherEvaluations();
+      await loadLearningTasks("teacher");
     } else if (role === "student") {
       await loadStudentExams();
+      await loadLearningTasks("student");
     }
   } catch (error) {
     const message = document.createElement("p");
@@ -1417,3 +1495,9 @@ initializePortal();
 
 document.addEventListener("submit",async e=>{if(e.target.id!=="admin-live-class-form")return;e.preventDefault();const btn=$("#save-live-class"),msg=$("#live-class-message");btn.disabled=true;msg.textContent="Scheduling class…";try{await api("/api/admin/live-classes",{method:"POST",body:JSON.stringify({title:$("#live-title").value.trim(),description:$("#live-description").value.trim(),batch_id:$("#live-batch").value,teacher_id:$("#live-teacher").value,meeting_provider:$("#live-provider").value,meeting_url:$("#live-url").value.trim(),starts_at:new Date($("#live-start").value).toISOString(),ends_at:new Date($("#live-end").value).toISOString()})});e.target.reset();msg.textContent="Class scheduled. Enrolled students can now see the meeting link.";await loadAdminLiveClasses();}catch(err){msg.textContent=err.message;}finally{btn.disabled=false;}});
 document.addEventListener("click",async e=>{if(e.target.id==="refresh-live-classes")await loadAdminLiveClasses();if(e.target.id==="save-teacher-attendance"){const btn=e.target,rows=Array.from($("#teacher-attendance-roster").querySelectorAll("select[data-student-id]")),attendance=rows.map(x=>({student_id:x.dataset.studentId,attendance_status:x.value}));if(attendance.some(x=>!x.attendance_status)){alert("Select an attendance status for every student before saving.");return;}btn.disabled=true;try{const d=await api("/api/teacher/live-classes/"+encodeURIComponent(btn.dataset.classId)+"/attendance",{method:"POST",body:JSON.stringify({attendance})});$("#teacher-attendance-message").textContent="Attendance saved for "+d.saved+" students.";}catch(err){alert(err.message);}finally{btn.disabled=false;}}});
+
+document.addEventListener("submit",async e=>{
+ if(e.target.id==="teacher-material-form"){e.preventDefault();const f=e.target,msg=$("#material-form-message"),btn=f.querySelector("button[type=submit]");btn.disabled=true;msg.textContent="Uploading to secure file storage…";try{const data=new FormData();data.append("title",$("#material-title").value.trim());data.append("description",$("#material-description").value.trim());data.append("batch_id",$("#material-batch").value);data.append("file",$("#material-file").files[0]);await apiForm("/api/teacher/materials",data);f.reset();msg.textContent="Study material uploaded and assigned to the batch.";await loadRoleWorkspace("teacher");}catch(err){msg.textContent=err.message;}finally{btn.disabled=false;}}
+ if(e.target.id==="teacher-assignment-form"){e.preventDefault();const f=e.target,msg=$("#teacher-assignment-message"),btn=f.querySelector("button[type=submit]");btn.disabled=true;msg.textContent="Publishing assignment…";try{const d=await api("/api/teacher/assignments",{method:"POST",body:JSON.stringify({title:$("#assignment-title").value.trim(),instructions:$("#assignment-instructions").value.trim(),batch_id:$("#assignment-batch").value,due_at:$("#assignment-due").value?new Date($("#assignment-due").value).toISOString():null,max_marks:$("#assignment-max-marks").value||null})});const file=$("#assignment-attachment").files[0];if(file){const data=new FormData();data.append("file",file);await apiForm("/api/teacher/assignments/"+d.id+"/attachments",data);}f.reset();msg.textContent="Assignment published.";await loadLearningTasks("teacher");}catch(err){msg.textContent=err.message;}finally{btn.disabled=false;}}
+ if(e.target.id==="student-assignment-submit"){e.preventDefault();const f=e.target,msg=$("#student-assignment-message"),btn=f.querySelector("button[type=submit]");btn.disabled=true;msg.textContent="Submitting work…";try{const data=new FormData();data.append("answer_text",$("#student-assignment-answer").value);const file=$("#student-assignment-file").files[0];if(file)data.append("file",file);await apiForm("/api/student/assignments/"+f.dataset.assignmentId+"/submit",data);msg.textContent="Your assignment has been submitted.";await loadLearningTasks("student");}catch(err){msg.textContent=err.message;}finally{btn.disabled=false;}}
+});
