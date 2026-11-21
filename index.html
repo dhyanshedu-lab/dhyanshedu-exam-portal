@@ -114,6 +114,7 @@
       <a class="nav-item" data-page="assignments" data-admin-only href="#assignments"><span>⇄</span> Teacher assignments</a>
       <a class="nav-item" data-page="students" data-admin-only href="#students"><span>♧</span> Students</a>
       <a class="nav-item" data-page="exam-monitoring" data-admin-only href="#exam-monitoring"><span>▥</span> Exam monitoring</a>
+      <a class="nav-item" data-page="live-classes" data-admin-only href="#live-classes"><span>◷</span> Live classes</a>
     </nav>
     <div class="sidebar-bottom">
       <div class="secure-note"><span>●</span><div><b>Secure workspace</b><small>Role-based access enabled</small></div></div>
@@ -236,6 +237,28 @@
           <div class="table-scroll"><table><thead><tr><th>Exam</th><th>Teacher</th><th>Batch / Class</th><th>Status</th><th>Enrolled</th><th>Attempts</th><th>In progress</th><th>Pending evaluation</th><th>Evaluated</th><th>Published results</th><th>Average %</th></tr></thead><tbody id="exam-monitoring-list"><tr><td colspan="11">Loading…</td></tr></tbody></table></div>
         </div>
         <p id="exam-monitoring-message" class="message"></p>
+      </section>
+
+      <section id="live-classes-page" class="hidden">
+        <div class="section-heading page-title"><div><h2>Online classes and attendance</h2><p class="muted">Schedule online lessons for active batches and review attendance.</p></div><button id="refresh-live-classes" class="btn btn-primary" type="button">Refresh</button></div>
+        <div class="form-card"><h3>Schedule a live class</h3>
+          <form id="admin-live-class-form" class="form-grid">
+            <div><label for="live-title">Class title</label><input id="live-title" required maxlength="180" placeholder="e.g. Algebra – Quadratic Equations"></div>
+            <div><label for="live-batch">Active batch</label><select id="live-batch" required><option value="">Select batch</option></select></div>
+            <div><label for="live-teacher">Assigned teacher</label><select id="live-teacher" required><option value="">Select teacher</option></select></div>
+            <div><label for="live-provider">Meeting provider</label><select id="live-provider"><option value="google_meet">Google Meet</option><option value="jitsi">Jitsi</option><option value="other">Other</option></select></div>
+            <div><label for="live-url">Meeting URL</label><input id="live-url" type="url" required placeholder="https://…"></div>
+            <div><label for="live-start">Start date and time</label><input id="live-start" type="datetime-local" required></div>
+            <div><label for="live-end">End date and time</label><input id="live-end" type="datetime-local" required></div>
+            <div class="full"><label for="live-description">Description (optional)</label><textarea id="live-description" rows="2" maxlength="2000"></textarea></div>
+            <div><button id="save-live-class" class="btn btn-primary" type="submit">Schedule class</button></div>
+          </form><p id="live-class-message" class="message"></p>
+          <p class="hint">The teacher must already be assigned to the selected batch. Students enrolled in that batch will see the meeting link in their workspace.</p>
+        </div>
+        <div class="table-card"><div class="table-heading"><h3>Scheduled and completed classes</h3><p class="muted">Attendance is marked by the assigned teacher; Admin can review the roster.</p></div>
+          <div class="table-scroll"><table><thead><tr><th>Class</th><th>Batch</th><th>Teacher</th><th>Schedule</th><th>Status</th><th>Enrolled</th><th>Marked</th><th>Present / Late</th><th>Attendance</th></tr></thead><tbody id="admin-live-class-list"><tr><td colspan="9">Loading…</td></tr></tbody></table></div>
+        </div>
+        <div id="admin-live-attendance" class="table-card hidden"><div class="table-heading"><h3 id="admin-live-attendance-title">Attendance details</h3></div><div class="table-scroll"><table><thead><tr><th>Student</th><th>Email</th><th>Status</th><th>Marked by</th></tr></thead><tbody id="admin-live-attendance-list"></tbody></table></div></div>
       </section>
       <p id="dashboard-message" class="message"></p>
       <footer class="page-footer">DhyanshEdu · Dhyan Today. Math Better Tomorrow.</footer>
