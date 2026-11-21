@@ -29,6 +29,11 @@ export async function handleStudyRequest(request,env,user,account,path,method){
       : student?await env.DB.prepare("SELECT r2_object_key,file_name,mime_type FROM study_materials WHERE id=? AND deleted_at IS NULL AND (visibility='all_students' OR EXISTS (SELECT 1 FROM batch_students bs WHERE bs.batch_id=study_materials.batch_id AND bs.student_id=? AND bs.status='active'))").bind(materialDownload[1],user.id).first():null;
     return download(env,request,row);
   }
+  const submissionAttach=path.match(/^\/api\/submissions\/([0-9a-f-]+)\/attachments\/([0-9a-f-]+)\/download$/i);
+  if(submissionAttach&&method==="GET"&&teacher){
+    const row=await env.DB.prepare("SELECT sa.r2_object_key,sa.file_name,sa.mime_type FROM submission_attachments sa JOIN assignment_submissions sub ON sub.id=sa.submission_id JOIN assignments a ON a.id=sub.assignment_id WHERE sub.id=? AND sa.id=? AND (a.teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=a.batch_id AND bt.teacher_id=?))").bind(submissionAttach[1],submissionAttach[2],user.id,user.id).first();
+    return download(env,request,row);
+  }
   const attach=path.match(/^\/api\/assignments\/([0-9a-f-]+)\/attachments\/([0-9a-f-]+)\/download$/i);
   if(attach&&method==="GET"){
     const row=teacher
