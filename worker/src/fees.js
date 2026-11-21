@@ -48,7 +48,7 @@ export async function handleFeeRequest(request,env,user,account,path,method){
     return json({success:true,status},200,request);
   }
   if(path==="/api/admin/fee-accounts"&&method==="GET"&&admin){
-    const rows=await env.DB.prepare("SELECT fa.id,fa.student_id,u.full_name student_name,u.email,fa.fee_plan_id,fa.description,fa.amount_due_paise,fa.original_amount_paise,fa.discount_paise,fa.scholarship_paise,fa.due_date,fa.status,fa.created_at,fp.name plan_name,(SELECT COALESCE(SUM(ft.amount_paise),0) FROM fee_transactions ft WHERE ft.fee_account_id=fa.id AND ft.status='recorded') paid_paise,(SELECT COALESCE(SUM(CASE WHEN adj.adjustment_type IN ('credit','waiver','refund') THEN adj.amount_paise ELSE -adj.amount_paise END),0) FROM fee_adjustments adj WHERE adj.fee_account_id=fa.id) adjustment_credit_paise FROM student_fee_accounts fa JOIN users u ON u.id=fa.student_id LEFT JOIN fee_plans fp ON fp.id=fa.fee_plan_id ORDER BY fa.created_at DESC LIMIT 500").all();
+    const rows=await env.DB.prepare("SELECT fa.id,fa.student_id,u.full_name student_name,u.email,fa.fee_plan_id,fa.description,fa.amount_due_paise,fa.original_amount_paise,fa.discount_paise,fa.scholarship_paise,fa.due_date,fa.status,fa.created_at,fp.name plan_name,(SELECT COALESCE(SUM(ft.amount_paise),0) FROM fee_transactions ft WHERE ft.fee_account_id=fa.id AND ft.status='recorded') paid_paise,(SELECT COALESCE(SUM(CASE WHEN adj.adjustment_type IN ('credit','waiver') THEN adj.amount_paise ELSE -adj.amount_paise END),0) FROM fee_adjustments adj WHERE adj.fee_account_id=fa.id) adjustment_credit_paise FROM student_fee_accounts fa JOIN users u ON u.id=fa.student_id LEFT JOIN fee_plans fp ON fp.id=fa.fee_plan_id ORDER BY fa.created_at DESC LIMIT 500").all();
     return json({success:true,accounts:rows.results||[]},200,request);
   }
   if(path==="/api/admin/fee-accounts"&&method==="POST"&&admin){
@@ -87,7 +87,7 @@ export async function handleFeeRequest(request,env,user,account,path,method){
     return json({success:true},201,request);
   }
   if(path==="/api/student/fees"&&method==="GET"&&student){
-    const rows=await env.DB.prepare("SELECT fa.id,fa.description,fa.amount_due_paise,fa.due_date,fa.status,fa.created_at,fp.name plan_name,(SELECT COALESCE(SUM(ft.amount_paise),0) FROM fee_transactions ft WHERE ft.fee_account_id=fa.id AND ft.status='recorded') paid_paise,(SELECT COALESCE(SUM(CASE WHEN adj.adjustment_type IN ('credit','waiver','refund') THEN adj.amount_paise ELSE -adj.amount_paise END),0) FROM fee_adjustments adj WHERE adj.fee_account_id=fa.id) adjustment_credit_paise FROM student_fee_accounts fa LEFT JOIN fee_plans fp ON fp.id=fa.fee_plan_id WHERE fa.student_id=? ORDER BY fa.created_at DESC").bind(user.id).all();
+    const rows=await env.DB.prepare("SELECT fa.id,fa.description,fa.amount_due_paise,fa.due_date,fa.status,fa.created_at,fp.name plan_name,(SELECT COALESCE(SUM(ft.amount_paise),0) FROM fee_transactions ft WHERE ft.fee_account_id=fa.id AND ft.status='recorded') paid_paise,(SELECT COALESCE(SUM(CASE WHEN adj.adjustment_type IN ('credit','waiver') THEN adj.amount_paise ELSE -adj.amount_paise END),0) FROM fee_adjustments adj WHERE adj.fee_account_id=fa.id) adjustment_credit_paise FROM student_fee_accounts fa LEFT JOIN fee_plans fp ON fp.id=fa.fee_plan_id WHERE fa.student_id=? ORDER BY fa.created_at DESC").bind(user.id).all();
     const accounts=rows.results||[];
     for(const a of accounts){
       const [transactions,installments]=await Promise.all([
