@@ -153,16 +153,23 @@
       </section>
       <section id="classes-page" class="hidden">
         <div class="section-heading page-title"><div><h2>Class management</h2><p class="muted">Create and manage academic classes and sections.</p></div></div>
+        <div class="form-card"><h3>Academic year setup</h3><form id="academic-year-form" class="inline-form">
+          <div><label for="academic-year-name">Academic year name</label><input id="academic-year-name" required maxlength="30" placeholder="e.g. 2026-27"></div>
+          <div><label for="academic-year-start">Start date (optional)</label><input id="academic-year-start" type="date"></div>
+          <div><label for="academic-year-end">End date (optional)</label><input id="academic-year-end" type="date"></div>
+          <button class="btn btn-primary" type="submit">+ Add academic year</button>
+        </form><p class="hint">Mark the current year active after adding it. Only the active year is offered when creating new classes and batches.</p><div id="academic-year-list" class="table-scroll"></div><p id="academic-year-message" class="message"></p></div>
         <div class="form-card"><form id="class-form" class="inline-form">
+          <div><label for="class-curriculum">School curriculum</label><select id="class-curriculum" required><option value="">Select curriculum</option></select></div>
           <div><label for="class-name">Class name</label><input id="class-name" required maxlength="80" placeholder="e.g. Class 11"></div>
           <div><label for="class-section">Section (optional)</label><input id="class-section" maxlength="30" placeholder="e.g. A"></div>
-          <div><label for="class-year">Academic year</label><input id="class-year" maxlength="30" placeholder="e.g. 2026-27"></div>
+          <div><label for="class-year">Academic year</label><select id="class-year" required><option value="">Select active academic year</option></select></div>
           <button class="btn btn-primary" id="save-class-button" type="submit">+ Add class</button>
         </form><p id="class-message" class="message"></p></div>
         <div class="table-card"><div class="table-heading"><h3>Classes</h3></div><div class="table-scroll"><table><thead><tr><th>Class</th><th>Section</th><th>Academic year</th><th>Status</th><th>Action</th></tr></thead><tbody id="class-list"></tbody></table></div></div>
       </section>
       <section id="subjects-page" class="hidden">
-        <div class="section-heading page-title"><div><h2>Subject management</h2><p class="muted">Maintain subjects offered by DhyanshEdu.</p></div></div>
+        <div class="section-heading page-title"><div><h2>Subject management</h2><p class="muted">Mathematics is the initial subject. Add Physics, Chemistry or others when offered.</p></div></div>
         <div class="form-card"><form id="subject-form" class="inline-form"><div><label for="subject-name">Subject name</label><input id="subject-name" required maxlength="80" placeholder="e.g. Mathematics"></div><button class="btn btn-primary" id="save-subject-button" type="submit">+ Add subject</button></form><p id="subject-message" class="message"></p></div>
         <div class="table-card"><div class="table-heading"><h3>Subjects</h3></div><div class="table-scroll"><table><thead><tr><th>Subject</th><th>Status</th><th>Action</th></tr></thead><tbody id="subject-list"></tbody></table></div></div>
       </section>
@@ -171,9 +178,11 @@
         <div class="form-card"><form id="batch-form" class="form-grid">
           <div><label for="batch-name">Batch name</label><input id="batch-name" required maxlength="120" placeholder="e.g. Class 11 Maths Evening"></div>
           <div><label for="batch-type">Batch type</label><select id="batch-type"><option value="group">Group class</option><option value="one_to_one">One-to-one</option></select></div>
-          <div><label for="batch-class">Class</label><select id="batch-class"><option value="">Select class</option></select></div>
-          <div><label for="batch-subject">Subject</label><select id="batch-subject"><option value="">Select subject</option></select></div>
-          <div><label for="batch-capacity">Capacity (optional)</label><input id="batch-capacity" type="number" min="1"></div>
+          <div><label for="batch-curriculum">School curriculum</label><select id="batch-curriculum" required><option value="">Select curriculum</option></select></div>
+          <div><label for="batch-class">Class</label><select id="batch-class" required><option value="">Select class</option></select></div>
+          <div><label for="batch-subject">Subject</label><select id="batch-subject" required><option value="">Select subject</option></select></div>
+          <div><label for="batch-year">Academic year</label><select id="batch-year" required><option value="">Select active academic year</option></select></div>
+          <div><label for="batch-capacity">Group capacity (required for group batches)</label><input id="batch-capacity" type="number" min="1"></div>
           <div><label for="batch-start">Start date</label><input id="batch-start" type="date"></div>
           <div><label for="batch-end">End date</label><input id="batch-end" type="date"></div>
           <button class="btn btn-primary" id="save-batch-button" type="submit">+ Create batch</button>

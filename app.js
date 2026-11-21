@@ -304,7 +304,7 @@ async function loadTeachers() {
 }
 
 
-const adminCache = { teachers: [], students: [], classes: [], subjects: [], batches: [] };
+const adminCache = { teachers: [], students: [], classes: [], subjects: [], batches: [], curricula: [], pathways: [], academicYears: [] };
 
 function showMessage(id, message) {
   const el = $("#" + id);
@@ -352,8 +352,48 @@ function statusTag(value) {
   span.textContent = value;
   return span;
 }
+async function loadMasterData() {
+  const d=await api("/api/master-data");
+  adminCache.curricula=d.curricula||[]; adminCache.pathways=d.pathways||[]; adminCache.academicYears=d.academic_years||[];
+  const activeYears=adminCache.academicYears.filter(x=>Number(x.is_active)===1);
+  fillSelect($("#class-curriculum"),adminCache.curricula,x=>x.name,"Select curriculum");
+  fillSelect($("#class-year"),activeYears,x=>x.name,"Select active academic year");
+  fillSelect($("#batch-curriculum"),adminCache.curricula,x=>x.name,"Select curriculum");
+  fillSelect($("#batch-year"),activeYears,x=>x.name,"Select active academic year");
+  fillSelect($("#batch-class"),[],x=>x.class_name,"Select class");
+  fillSelect($("#batch-subject"),[],x=>x.subject_name,"Select subject");
+  const yearHost=$("#academic-year-list");
+  if(yearHost){
+    yearHost.replaceChildren();
+    const table=document.createElement("table");
+    table.innerHTML="<thead><tr><th>Academic year</th><th>Dates</th><th>Status</th><th>Action</th></tr></thead>";
+    const tbody=document.createElement("tbody");
+    adminCache.academicYears.forEach(y=>{
+      const tr=tbody.insertRow(); tr.insertCell().textContent=y.name;
+      tr.insertCell().textContent=[y.start_date,y.end_date].filter(Boolean).join(" to ")||"—";
+      tr.insertCell().append(statusTag(Number(y.is_active)===1?"active":"inactive"));
+      const action=tr.insertCell();
+      if(Number(y.is_active)!==1){const btn=document.createElement("button");btn.className="btn btn-small btn-primary";btn.textContent="Set active";btn.addEventListener("click",async()=>{try{await api("/api/academic-years/active",{method:"PATCH",body:JSON.stringify({id:y.id})});await loadMasterData();}catch(e){alert(e.message);}});action.append(btn);}else action.textContent="Current";
+    });
+    if(!adminCache.academicYears.length){const tr=tbody.insertRow();const td=tr.insertCell();td.colSpan=4;td.textContent="No academic years yet. Add one above.";}
+    table.append(tbody);yearHost.append(table);
+  }
+}
+function refreshBatchClassOptions() {
+  const curriculumId=$("#batch-curriculum").value;
+  const items=adminCache.classes.filter(x=>x.status==="active" && String(x.curriculum_id)===String(curriculumId));
+  fillSelect($("#batch-class"),items,x=>`${x.class_name}${x.section ? " - "+x.section : ""}`,"Select class");
+  refreshBatchSubjectOptions();
+}
+function refreshBatchSubjectOptions() {
+  const cls=adminCache.classes.find(x=>String(x.id)===String($("#batch-class").value));
+  const items=cls?adminCache.subjects.filter(x=>x.status==="active"):[];
+  fillSelect($("#batch-subject"),items,x=>x.subject_name,"Select subject");
+}
+
 async function loadClasses() {
   const body = $("#class-list"); body.replaceChildren();
+  await loadMasterData();
   const { classes } = await api("/api/classes");
   adminCache.classes = classes;
   classes.forEach(item => {
@@ -381,6 +421,7 @@ async function loadSubjects() {
 }
 async function loadBatches() {
   const body=$("#batch-list"); body.replaceChildren();
+  await loadMasterData();
   const [batchData,classData,subjectData,teacherData,studentData]=await Promise.all([
     api("/api/batches"),api("/api/classes"),api("/api/subjects"),api("/api/teachers"),api("/api/students")
   ]);
@@ -389,8 +430,7 @@ async function loadBatches() {
   adminCache.subjects=subjectData.subjects;
   adminCache.teachers=teacherData.teachers.filter(x=>x.status==="approved");
   adminCache.students=studentData.students.filter(x=>x.status==="approved");
-  fillSelect($("#batch-class"),adminCache.classes.filter(x=>x.status==="active"),x=>`${x.class_name}${x.section ? " - "+x.section : ""}`,"Select class");
-  fillSelect($("#batch-subject"),adminCache.subjects.filter(x=>x.status==="active"),x=>x.subject_name,"Select subject");
+  refreshBatchClassOptions();
   fillSelect($("#manage-batch"),adminCache.batches.filter(x=>x.status==="active"),x=>x.batch_name,"Select batch");
   fillSelect($("#batch-teacher"),adminCache.teachers,x=>x.full_name,"Select approved teacher");
   fillSelect($("#batch-student"),adminCache.students,x=>x.full_name,"Select approved student");
@@ -398,9 +438,20 @@ async function loadBatches() {
     const row=body.insertRow(); addCell(row,item.batch_name); addCell(row,item.class_name || "—"); addCell(row,item.subject_name || "—");
     addCell(row,item.batch_type==="one_to_one"?"One-to-one":"Group");
     const status=row.insertCell(); status.append(statusTag(item.status));
-    addStatusSelect(row.insertCell(),item.status,["active","inactive","completed"],value=>
+    const action=row.insertCell();
+    addStatusSelect(action,item.status,["active","inactive","completed"],value=>
       api(`/api/batches/${item.id}/status`,{method:"PATCH",body:JSON.stringify({status:value})})
     );
+    if(item.status==="active") {
+      const remove=document.createElement("button"); remove.className="btn btn-danger btn-small"; remove.textContent="Remove"; remove.style.marginLeft="8px";
+      remove.addEventListener("click",async()=>{
+        if(!confirm(`Remove batch “${item.batch_name}”? It will be hidden from active use, but historical records will be preserved.`)) return;
+        remove.disabled=true;
+        try { await api(`/api/batches/${item.id}`,{method:"DELETE"}); await loadBatches(); }
+        catch(e){alert(e.message);remove.disabled=false;}
+      });
+      action.append(remove);
+    }
   });
   if (!adminCache.batches.length) { const row=body.insertRow(); const td=addCell(row,"No batches created yet."); td.colSpan=6; }
 }
@@ -444,11 +495,19 @@ async function loadAdminPage(name) {
   } catch(error) { $("#dashboard-message").textContent=error.message; }
 }
 
+$("#academic-year-form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  try{
+    await api("/api/academic-years",{method:"POST",body:JSON.stringify({name:$("#academic-year-name").value.trim(),start_date:$("#academic-year-start").value||null,end_date:$("#academic-year-end").value||null,is_active:adminCache.academicYears.length===0})});
+    $("#academic-year-form").reset();showMessage("academic-year-message","Academic year added.");await loadMasterData();
+  }catch(error){showMessage("academic-year-message",error.message);}
+});
+
 $("#class-form").addEventListener("submit",async e=>{
   e.preventDefault(); const b=$("#save-class-button"); b.disabled=true;
   try {
     await api("/api/classes",{method:"POST",body:JSON.stringify({
-      class_name:$("#class-name").value.trim(),section:$("#class-section").value.trim(),academic_year:$("#class-year").value.trim()
+      class_name:$("#class-name").value.trim(),section:$("#class-section").value.trim(),curriculum_id:$("#class-curriculum").value,academic_year_id:$("#class-year").value
     })});
     $("#class-form").reset(); showMessage("class-message","Class created successfully."); await loadClasses();
   } catch(error){showMessage("class-message",error.message);} finally{b.disabled=false;}
@@ -465,12 +524,19 @@ $("#batch-form").addEventListener("submit",async e=>{
   try {
     await api("/api/batches",{method:"POST",body:JSON.stringify({
       batch_name:$("#batch-name").value.trim(),batch_type:$("#batch-type").value,
-      class_id:$("#batch-class").value || null,subject_id:$("#batch-subject").value || null,
-      capacity:$("#batch-capacity").value || null,start_date:$("#batch-start").value || null,end_date:$("#batch-end").value || null
+      class_id:$("#batch-class").value,subject_id:$("#batch-subject").value,academic_year_id:$("#batch-year").value,
+      capacity:$("#batch-type").value==="one_to_one"?1:$("#batch-capacity").value,start_date:$("#batch-start").value || null,end_date:$("#batch-end").value || null
     })});
     $("#batch-form").reset(); showMessage("batch-message","Batch created successfully."); await loadBatches();
   } catch(error){showMessage("batch-message",error.message);} finally{b.disabled=false;}
 });
+$("#batch-curriculum").addEventListener("change",()=>refreshBatchClassOptions());
+$("#batch-class").addEventListener("change",()=>refreshBatchSubjectOptions());
+$("#batch-type").addEventListener("change",()=>{
+  const one=$("#batch-type").value==="one_to_one";
+  $("#batch-capacity").disabled=one; if(one) $("#batch-capacity").value="1"; else if($("#batch-capacity").value==="1") $("#batch-capacity").value="";
+});
+
 $("#batch-teacher-form").addEventListener("submit",async e=>{
   e.preventDefault(); const batch=$("#manage-batch").value;
   if(!batch){showMessage("batch-assign-message","Select a batch first.");return;}
