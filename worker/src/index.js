@@ -351,17 +351,13 @@ export default {
          let score=0,manual=0;
          for(const q of qs.results||[]){
            const ans=answerMap.get(q.id);
-           if(["short_answer","long_answer"].includes(q.question_type)){manual++;continue;}
+           if(["short_answer","long_answer","numerical"].includes(q.question_type)){manual++;continue;}
            let correct=false;
            if(q.question_type==="mcq"||q.question_type==="multiple_select"){
              const chosen=new Set(JSON.parse(ans?.selected_option_ids||"[]"));
              const rightRows=await env.DB.prepare("SELECT id FROM question_options WHERE question_id=(SELECT question_id FROM exam_questions WHERE id=?) AND is_correct=1").bind(q.id).all();
              const right=new Set((rightRows.results||[]).map(x=>x.id));
              correct=chosen.size===right.size && [...chosen].every(id=>right.has(id));
-           } else if(q.question_type==="numerical" && ans?.answer_text?.trim()!==""){
-             const key=await env.DB.prepare("SELECT explanation FROM questions WHERE id=(SELECT question_id FROM exam_questions WHERE id=?)").bind(q.id).first();
-             const expected=Number(key?.explanation), actual=Number(ans.answer_text);
-             correct=Number.isFinite(expected)&&Number.isFinite(actual)&&Math.abs(expected-actual)<1e-8;
            }
            const awarded=correct?Number(q.marks): (ans && (q.question_type==="mcq"||q.question_type==="multiple_select") ? -Number(q.negative_marks||0) : 0);
            score+=awarded;
