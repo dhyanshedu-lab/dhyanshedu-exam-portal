@@ -178,6 +178,7 @@ function roleWorkspaceSection() {
           <div><button class="btn btn-primary" type="submit" id="save-question-button">Save question</button></div>
         </form><p id="question-form-message" class="message"></p>
       </div>
+      <div class="form-card"><h3>Import questions from CSV / XLSX</h3><p class="muted">Required column: question_text. Optional: question_type, topic, difficulty, default_marks, option_a through option_h, correct_answers, explanation. For MCQs, correct_answers uses labels such as A or A,C. Maximum 100 questions per file.</p><div class="form-grid"><div><label for="question-import-batch">Assigned batch</label><select id="question-import-batch"><option value="">Select batch</option></select></div><div><label for="question-import-file">CSV or XLSX file</label><input id="question-import-file" type="file" accept=".csv,.xlsx"></div><div><button class="btn btn-primary" type="button" id="import-questions-button">Import questions</button></div></div><p id="question-import-message" class="message"></p></div>
       <div class="table-card"><div class="table-heading"><h3>My questions</h3></div><div class="table-scroll"><table><thead><tr><th>Question</th><th>Type</th><th>Topic</th><th>Difficulty</th><th>Marks</th></tr></thead><tbody id="teacher-question-list"><tr><td colspan="5">Loading…</td></tr></tbody></table></div></div>
 
       <div class="section-heading lower"><div><h2>Exam builder</h2><p class="muted">Create a draft or scheduled exam for one of your assigned batches.</p></div></div>
@@ -687,6 +688,7 @@ async function loadRoleWorkspace(role) {
     if (role === "teacher") {
       teacherWorkspaceBatches = batches.batches || [];
       populateTeacherBatchSelects();
+      const importBatch=$("#question-import-batch");if(importBatch){importBatch.replaceChildren();const first=document.createElement("option");first.value="";first.textContent="Select batch";importBatch.append(first);teacherWorkspaceBatches.forEach(b=>{const o=document.createElement("option");o.value=b.id;o.textContent=b.batch_name+" — "+(b.subject_name||"Subject");importBatch.append(o);});}
       $("#question-type").addEventListener("change",()=>{
         const enabled=["mcq","multiple_select"].includes($("#question-type").value);
         $("#question-options-wrap").classList.toggle("hidden",!enabled);
@@ -1373,6 +1375,30 @@ document.addEventListener("submit",async e=>{
   finally{button.disabled=false;}
 });
 
+$("#import-questions-button")?.addEventListener("click",async()=>{
+  const button=$("#import-questions-button"),message=$("#question-import-message"),file=$("#question-import-file").files[0],batch=teacherWorkspaceBatches.find(x=>String(x.id)===String($("#question-import-batch").value));
+  if(!batch||!file){message.textContent="Choose an assigned batch and a CSV/XLSX file.";return;}
+  button.disabled=true;let added=0;message.textContent="Reading spreadsheet…";
+  try{
+    const XLSX=await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+    const book=XLSX.read(await file.arrayBuffer(),{type:"array"}),rows=XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]],{defval:""});
+    if(!rows.length||rows.length>100)throw new Error("The first sheet must contain 1–100 question rows.");
+    for(let i=0;i<rows.length;i++){
+      const r={};Object.entries(rows[i]).forEach(([k,v])=>r[String(k).trim().toLowerCase().replace(/\s+/g,"_")]=v);
+      const q=String(r.question_text??"").trim();if(!q)throw new Error("Row "+(i+2)+": question_text is required.");
+      const type=String(r.question_type||"mcq").trim().toLowerCase(),difficulty=String(r.difficulty||"medium").trim().toLowerCase(),correct=String(r.correct_answers||"").toUpperCase().split(/[\s,;]+/).filter(Boolean),options=[];
+      for(let n=0;n<8;n++){const label=String.fromCharCode(97+n),v=r["option_"+label];if(String(v??"").trim())options.push({option_text:String(v).trim(),is_correct:correct.includes(label.toUpperCase())});}
+      if(!["mcq","multiple_select","numerical","short_answer","long_answer"].includes(type))throw new Error("Row "+(i+2)+": unsupported question_type.");
+      if(!["easy","medium","hard"].includes(difficulty))throw new Error("Row "+(i+2)+": difficulty must be easy, medium or hard.");
+      if(["mcq","multiple_select"].includes(type)&&(options.length<2||options.filter(o=>o.is_correct).length<1||(type==="mcq"&&options.filter(o=>o.is_correct).length!==1)))throw new Error("Row "+(i+2)+": provide 2–8 options and valid correct_answers.");
+      const marks=Number(r.default_marks||1);if(!Number.isFinite(marks)||marks<=0)throw new Error("Row "+(i+2)+": default_marks must be positive.");
+      await api("/api/teacher/questions",{method:"POST",body:JSON.stringify({question_type:type,question_text:q,topic:String(r.topic||""),difficulty: difficulty,default_marks:marks,subject_id:String(batch.subject_id),class_id:batch.class_id==null?null:String(batch.class_id),explanation:String(r.explanation||""),options:["mcq","multiple_select"].includes(type)?options:[]})});
+      added++;message.textContent="Imported "+added+" of "+rows.length+" questions…";
+    }
+    $("#question-import-file").value="";message.textContent="Successfully imported "+added+" questions into your question bank.";await loadTeacherAuthoring();
+  }catch(error){message.textContent="Imported "+added+" question(s). "+error.message;await loadTeacherAuthoring();}
+  finally{button.disabled=false;}
+});
 $("#academic-year-form").addEventListener("submit",async e=>{
   e.preventDefault();
   try{
