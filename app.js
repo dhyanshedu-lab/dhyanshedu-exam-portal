@@ -1342,7 +1342,7 @@ function showDemoForm(enquiry=null){
 }
 
 function editDemoBooking(item){
-  const teacherChoices=enquiryStaffCache.filter(t=>t.role==="teacher");
+  const teacherChoices=enquiryStaffCache; // /api/teachers already returns teacher accounts only.
   const teacherId=prompt("Enter approved teacher ID (or leave blank to keep current):\n"+teacherChoices.map(t=>t.full_name+" — "+t.id).join("\n"),item.assigned_teacher_id||"");
   if(teacherId===null)return;
   const start=prompt("Confirmed start date/time (ISO format, optional)",item.confirmed_starts_at||"");
