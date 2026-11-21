@@ -737,13 +737,14 @@ async function loadAdminPage(name) {
   } catch(error) { $("#dashboard-message").textContent=error.message; }
 }
 
-document.addEventListener("submit",async e=>{\n  if(e.target.id!=="teacher-question-form") return;
+document.addEventListener("submit",async e=>{
+  if(e.target.id!=="teacher-question-form") return;
   e.preventDefault();
   const button=$("#save-question-button"), message=$("#question-form-message");
   const batch=teacherWorkspaceBatches.find(x=>x.id===$("#question-batch").value);
   if(!batch){message.textContent="Select one of your assigned batches.";return;}
   const type=$("#question-type").value;
-  const lines=$("#question-options").value.split("\\n").map(x=>x.trim()).filter(Boolean);
+  const lines=$("#question-options").value.split("\n").map(x=>x.trim()).filter(Boolean);
   const labels=$("#question-correct").value.toUpperCase().split(",").map(x=>x.trim()).filter(Boolean);
   const options=lines.map((option_text,i)=>({option_text,is_correct:labels.includes(String.fromCharCode(65+i))}));
   button.disabled=true;message.textContent="Saving question…";
@@ -761,7 +762,8 @@ document.addEventListener("submit",async e=>{\n  if(e.target.id!=="teacher-quest
   finally{button.disabled=false;}
 });
 
-document.addEventListener("submit",async e=>{\n  if(e.target.id!=="teacher-exam-form") return;
+document.addEventListener("submit",async e=>{
+  if(e.target.id!=="teacher-exam-form") return;
   e.preventDefault();
   const button=$("#save-exam-button"),message=$("#exam-form-message");
   const questionIds=Array.from($("#exam-questions").selectedOptions).map(x=>x.value);
