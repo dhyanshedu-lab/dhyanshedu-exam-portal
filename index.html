@@ -117,6 +117,7 @@
       <a class="nav-item" data-page="live-classes" data-admin-only href="#live-classes"><span>◷</span> Live classes</a>
       <a class="nav-item" data-page="fees" data-admin-only href="#fees"><span>₹</span> Fee management</a>
       <a class="nav-item" data-page="enquiries" data-admin-only href="#enquiries"><span>✉</span> Enquiries & demos</a>
+      <a class="nav-item" data-page="admissions" data-admin-only href="#admissions"><span>✓</span> Admissions</a>
     </nav>
     <div class="sidebar-bottom">
       <div class="secure-note"><span>●</span><div><b>Secure workspace</b><small>Role-based access enabled</small></div></div>
@@ -273,6 +274,27 @@
         <div class="section-heading lower"><div><h2>Free demo sessions</h2><p class="muted">Confirm availability only after checking the teacher's schedule.</p></div><button id="new-demo-button" class="btn btn-primary" type="button">+ Create demo</button></div>
         <div class="table-card"><div class="table-heading"><h3>Demo requests and bookings</h3></div><div class="table-scroll"><table><thead><tr><th>Student</th><th>Contact</th><th>Preferred time</th><th>Assigned teacher</th><th>Status</th><th>Action</th></tr></thead><tbody id="demo-list"><tr><td colspan="6">Loading demos…</td></tr></tbody></table></div></div>
         <p id="enquiry-message" class="message"></p>
+      </section>
+      <section id="admissions-page" class="hidden">
+        <div class="section-heading page-title"><div><h2>Admission management</h2><p class="muted">Convert an enquiry into an admission for an existing approved student account.</p></div><button id="refresh-admissions" class="btn btn-primary" type="button">Refresh</button></div>
+        <div class="form-card">
+          <h3>Record new admission</h3>
+          <p class="muted">Student accounts must be invited and approved first. This form does not create login credentials.</p>
+          <form id="admission-form" class="form-grid">
+            <div><label for="admission-student">Approved student *</label><select id="admission-student" required><option value="">Loading students…</option></select></div>
+            <div><label for="admission-enquiry">Link website enquiry</label><select id="admission-enquiry"><option value="">No linked enquiry</option></select></div>
+            <div><label for="admission-number">Admission number *</label><input id="admission-number" required maxlength="40" placeholder="e.g. DE-2026-001"></div>
+            <div><label for="admission-date">Admission date *</label><input id="admission-date" type="date" required></div>
+            <div><label for="admission-class">Class</label><select id="admission-class"><option value="">Select class</option></select></div>
+            <div><label for="admission-subject">Subject</label><select id="admission-subject"><option value="">Select subject</option></select></div>
+            <div><label for="admission-mode">Learning mode</label><select id="admission-mode"><option value="">Select mode</option><option value="group">Group</option><option value="one_to_one">One-to-one</option></select></div>
+            <div><label for="admission-agreed-fee">Agreed fee (₹)</label><input id="admission-agreed-fee" type="number" min="0" step="0.01" placeholder="Optional"></div>
+            <div class="full"><label for="admission-notes">Notes</label><textarea id="admission-notes" rows="2" maxlength="2000"></textarea></div>
+            <div><button id="save-admission-button" class="btn btn-primary" type="submit">Create admission</button></div>
+          </form>
+          <p id="admission-message" class="message"></p>
+        </div>
+        <div class="table-card"><div class="table-heading"><h3>Recorded admissions</h3></div><div class="table-scroll"><table><thead><tr><th>Admission no.</th><th>Student</th><th>Email</th><th>Date</th><th>Class ID</th><th>Subject ID</th><th>Mode</th><th>Status</th></tr></thead><tbody id="admission-list"><tr><td colspan="8">Loading…</td></tr></tbody></table></div></div>
       </section>
       <section id="exam-monitoring-page" class="hidden">
         <div class="section-heading page-title"><div><h2>Exam monitoring</h2><p class="muted">Monitor examinations, student attempts, pending evaluations and published results across all batches.</p></div><button id="refresh-exam-monitoring" class="btn btn-primary" type="button">Refresh</button></div>
