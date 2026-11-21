@@ -36,4 +36,20 @@ assert db.execute("SELECT student_id,status FROM fee_transactions WHERE id='tx-1
 assert db.execute("SELECT transaction_id,issued_at FROM fee_receipts WHERE id='receipt-1'").fetchone()[0] == "tx-1"
 assert db.execute("SELECT actor_user_id,details_json FROM audit_logs WHERE id='audit-1'").fetchone() == ("admin-1", "{}")
 
-print("Fee migration passed against the live Phase 1 schema fixture; legacy fee plan, account, payment, receipt and audit rows were preserved.")
+# Validate the enquiry migration on the same D1 fixture.
+enquiry_migration = Path("migrations/0004_enquiries.sql").read_text()
+db.executescript(enquiry_migration)
+db.execute("INSERT INTO users(id,full_name,role,status,email) VALUES('teacher-1','Test Teacher','teacher','approved','teacher@example.test')")
+db.execute("""INSERT INTO enquiries(id,student_name,parent_name,phone,email,student_class,board,status)
+              VALUES('enq-1','Student','Parent','9876543210','parent@example.test','Class 8','CBSE','new')""")
+db.execute("""INSERT INTO enquiry_history(id,enquiry_id,actor_user_id,action,field_name,old_value,new_value)
+              VALUES('eh-1','enq-1',NULL,'created','status',NULL,'new')""")
+db.execute("""UPDATE enquiries SET status='contacted',assigned_to='teacher-1',
+              follow_up_at='2026-11-25',admin_notes='Call in evening',updated_at=datetime('now')
+              WHERE id='enq-1'""")
+db.execute("""INSERT INTO enquiry_history(id,enquiry_id,actor_user_id,action,field_name,old_value,new_value)
+              VALUES('eh-2','enq-1','admin-1','updated','status','new','contacted')""")
+assert db.execute("SELECT status,assigned_to,follow_up_at,admin_notes FROM enquiries WHERE id='enq-1'").fetchone() == ("contacted","teacher-1","2026-11-25","Call in evening")
+assert db.execute("SELECT COUNT(*) FROM enquiry_history WHERE enquiry_id='enq-1'").fetchone()[0] == 2
+
+print("Fee and enquiry migrations passed against the Phase 1 D1 schema fixture; legacy fee records and enquiry follow-up history were preserved.")
