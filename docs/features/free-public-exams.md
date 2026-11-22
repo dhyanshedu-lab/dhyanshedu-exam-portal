@@ -79,3 +79,10 @@ Admin-only routes must manage publication and review using the existing approved
 - The existing portal Worker source in GitHub and the currently deployed Cloudflare Worker must be reconciled before changing/deploying API code.
 - The consolidated migration has not been approved for production execution. The new schema is a draft until tested against the actual D1 schema.
 - Do not place real student/guest personal data in test fixtures or commit secrets.
+
+
+## Current database inspection (read-only, 2026-11-22)
+
+A read-only inspection of the existing Cloudflare D1 database confirmed that the required parent tables are present: `users`, `exams`, `exam_questions`, `questions`, `question_options`, `exam_attempts`, `results`, and `audit_logs`. The public-exam tables introduced by this branch are not installed yet. No D1 rows or schema were changed during this inspection.
+
+The public-exam migration still needs to be validated against the complete live schema and applied only to a reviewed development database first. The existing database contains test records; do not assume its current contents are disposable without a backup and explicit approval.
