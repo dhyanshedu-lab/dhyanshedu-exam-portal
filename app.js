@@ -1249,6 +1249,64 @@ async function loadExamMonitoring() {
   }
 }
 
+async function loadPublicExams(){
+  const body=$("#public-exams-list"),attemptBody=$("#public-attempts-list");
+  if(!body||!attemptBody)return;
+  body.innerHTML='<tr><td colspan="7">Loading public exam catalogue…</td></tr>';
+  attemptBody.innerHTML='<tr><td colspan="9">Loading guest attempts…</td></tr>';
+  showMessage("public-exams-message","");
+  try{
+    const [catalogue,attempts]=await Promise.all([api("/api/admin/public-exams"),api("/api/admin/public-attempts")]);
+    body.replaceChildren();
+    (catalogue.exams||[]).forEach(x=>{
+      const tr=body.insertRow();
+      const title=tr.insertCell();title.textContent=x.title||"Untitled";
+      [x.exam_status,x.public_status||"Not published",x.public_slug||"—",x.question_count,x.attempts].forEach(v=>{const td=tr.insertCell();td.textContent=v??"—";});
+      const action=tr.insertCell();
+      const btn=document.createElement("button");btn.className="btn btn-small "+(x.public_status==="published"?"btn-danger":"btn-primary");
+      btn.textContent=x.public_status==="published"?"Unpublish":"Publish / Update";
+      btn.addEventListener("click",async()=>{
+        try{
+          let payload;
+          if(x.public_status==="published"){
+            if(!confirm("Remove this exam from the public catalogue? Existing attempts will remain preserved."))return;
+            payload={status:"draft",public_slug:x.public_slug||"exam-"+x.exam_id.slice(0,8),max_attempts:x.max_attempts||1,results_mode:x.results_mode||"immediate",starts_at:x.starts_at||null,ends_at:x.ends_at||null};
+          }else{
+            const suggested=(x.title||"free-exam").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,80)||"free-exam";
+            const slug=prompt("Public page URL slug (free-exams.html? no, this becomes /free-exams.html#"+suggested+")",x.public_slug||suggested);if(slug===null)return;
+            const max=prompt("Maximum attempts per student (1–10)",String(x.max_attempts||1));if(max===null)return;
+            const mode=prompt("Result mode: immediate or after_review",x.results_mode||"immediate");if(mode===null)return;
+            const starts=prompt("Public exam opening date/time (optional ISO format, e.g. 2026-11-25T09:00:00)",x.starts_at||"");if(starts===null)return;
+            const ends=prompt("Public exam closing date/time (optional ISO format)",x.ends_at||"");if(ends===null)return;
+            payload={status:"published",public_slug:slug,max_attempts:Number(max),results_mode:mode,starts_at:starts||null,ends_at:ends||null};
+          }
+          await api("/api/admin/public-exams/"+encodeURIComponent(x.exam_id),{method:"PUT",body:JSON.stringify(payload)});
+          await loadPublicExams();
+        }catch(e){alert(e.message);}
+      });
+      action.append(btn);
+    });
+    if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=7;td.textContent="No exams have been created yet.";}
+    attemptBody.replaceChildren();
+    (attempts.attempts||[]).forEach(x=>{
+      const tr=attemptBody.insertRow();
+      [x.started_at?new Date(x.started_at).toLocaleString():"—",x.student_name,x.phone+(x.email?" · "+x.email:""),x.class_label,x.exam_title,"#"+x.attempt_number,x.status,x.score==null?"—":Number(x.score).toFixed(2)+" / "+Number(x.total_marks||0).toFixed(2)].forEach(v=>{const td=tr.insertCell();td.textContent=v??"—";});
+      const td=tr.insertCell();
+      if(x.status==="evaluated"&&!x.result_released_at){
+        const release=document.createElement("button");release.className="btn btn-small btn-primary";release.textContent="Release result";
+        release.addEventListener("click",async()=>{if(!confirm("Release this result to the student?"))return;try{await api("/api/admin/public-attempts/"+encodeURIComponent(x.attempt_id)+"/release-result",{method:"POST",body:"{}"});await loadPublicExams();}catch(e){alert(e.message);}});
+        td.append(release);
+      }else td.textContent=x.result_released_at?"Released":x.status==="submitted"?"Pending evaluation":"—";
+    });
+    if(!attemptBody.children.length){const tr=attemptBody.insertRow(),td=tr.insertCell();td.colSpan=9;td.textContent="No public exam attempts yet.";}
+  }catch(e){
+    body.innerHTML='<tr><td colspan="7">'+e.message+'</td></tr>';
+    attemptBody.innerHTML='<tr><td colspan="9">Could not load guest attempts.</td></tr>';
+    showMessage("public-exams-message","Could not load public exam data.");
+  }
+}
+document.addEventListener("click",e=>{if(e.target.id==="refresh-public-exams")loadPublicExams();});
+
 document.addEventListener("change",e=>{
   if(e.target.id==="monitor-status-filter")renderExamMonitoringRows();
 });
