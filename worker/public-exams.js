@@ -254,16 +254,17 @@ export async function handlePublicExamRequest(request, env, path, method) {
         manual++;
         continue;
       }
-      let correct = false;
+      let correct = false, attempted = false;
       if (["mcq", "multiple_select"].includes(q.question_type)) {
         const selected = new Set(JSON.parse(answer?.selected_option_ids || "[]"));
+        attempted = selected.size > 0;
         const correctRows = await env.DB.prepare(
           "SELECT qo.id FROM question_options qo JOIN exam_questions eq ON eq.question_id=qo.question_id WHERE eq.id=? AND qo.is_correct=1"
         ).bind(q.id).all();
         const right = new Set((correctRows.results || []).map(x => x.id));
         correct = selected.size === right.size && [...selected].every(id => right.has(id)) && right.size > 0;
       }
-      const awarded = correct ? Number(q.marks) : (answer && ["mcq", "multiple_select"].includes(q.question_type) ? -Number(q.negative_marks || 0) : 0);
+      const awarded = correct ? Number(q.marks) : (attempted ? -Number(q.negative_marks || 0) : 0);
       score += awarded;
       writes.push(env.DB.prepare(
         "INSERT INTO public_assessment_answers(id,public_attempt_id,exam_question_id,answer_text,selected_option_ids,is_correct,marks_awarded,answered_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(public_attempt_id,exam_question_id) DO UPDATE SET is_correct=excluded.is_correct,marks_awarded=excluded.marks_awarded"
