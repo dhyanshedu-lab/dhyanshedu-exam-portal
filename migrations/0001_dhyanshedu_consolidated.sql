@@ -258,6 +258,7 @@ CREATE TABLE IF NOT EXISTS enquiries (
     privacy_notice_version TEXT,
     consent_recorded_at TEXT,
     marketing_consent INTEGER NOT NULL DEFAULT 0 CHECK (marketing_consent IN (0,1)),
+    identity_key TEXT NOT NULL UNIQUE,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -427,6 +428,7 @@ CREATE TABLE IF NOT EXISTS public_assessment_attempts (
     access_token_hash TEXT NOT NULL UNIQUE,
     started_at TEXT NOT NULL DEFAULT (datetime('now')),
     submitted_at TEXT,
+    result_released_at TEXT,
     expires_at TEXT NOT NULL,
     last_activity_at TEXT NOT NULL DEFAULT (datetime('now')),
     score REAL,
