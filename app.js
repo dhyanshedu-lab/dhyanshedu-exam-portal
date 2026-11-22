@@ -1671,12 +1671,24 @@ $("#pending-login-button").addEventListener("click", () => {
 
 $("#refresh-system-health")?.addEventListener("click",()=>loadSystemHealth());
 
-$("#signout-button").addEventListener("click", async () => {
-  await supabase.auth.signOut();
+async function signOutPortal() {
+  const buttons = [$("#signout-button"), $("#topbar-signout")].filter(Boolean);
+  buttons.forEach(button => { button.disabled = true; button.textContent = "Signing out…"; });
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+    profile = null;
+    const workspace = $("#role-workspace-page");
+    if (workspace) workspace.remove();
+    showLogin("You have signed out.");
+  } catch (error) {
+    buttons.forEach(button => { button.disabled = false; button.textContent = "↪ Sign out"; });
+    const message = $("#dashboard-message") || $("#login-message");
+    if (message) message.textContent = "Could not sign out: " + (error.message || "Please try again.");
+  }
+}
 
-  profile = null;
-  showLogin("You have signed out.");
-});
+$("#signout-button")?.addEventListener("click", signOutPortal);
 
 document.querySelectorAll(".nav-item[data-page]").forEach(a => {
   a.addEventListener("click", e => {
