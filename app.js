@@ -1286,7 +1286,7 @@ document.addEventListener("click",async e=>{
   if(e.target.id==="close-public-attempt-review")$("#public-attempt-review")?.classList.add("hidden");
   if(e.target.id==="save-public-attempt-review"){
     const button=e.target,grades=Array.from(document.querySelectorAll("[data-public-grade]")).map(input=>({
-      exam_question_id:input.dataset.publicGrade,marks_awarded:Number(input.value),
+      exam_question_id:input.dataset.publicGrade,marks_awarded:input.value.trim()===""?NaN:Number(input.value),
       teacher_feedback:document.querySelector('[data-public-feedback="'+input.dataset.publicGrade+'"]')?.value||""
     }));
     if(!grades.length)return;
