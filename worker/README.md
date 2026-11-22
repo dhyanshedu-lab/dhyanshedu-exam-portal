@@ -1,15 +1,21 @@
-# Cloudflare Worker source audit snapshot
+# Cloudflare Worker source audit and QA candidate
 
-This branch captures the three modules returned by Cloudflare's Worker content endpoint for `dhyanshedu-api` on 2026-11-22. The active deployment metadata at capture time identified Worker version 26 as serving 100% of traffic.
+This branch captures the three modules returned by Cloudflare's Worker content endpoint for `dhyanshedu-api` on 2026-11-22. At capture time, Worker version 26 was serving 100% of traffic.
 
-These files are an audit snapshot only. They are not wired into the portal's existing deployment pipeline and must not be deployed automatically.
+## Changes in this isolated branch
+- Replaced the double-escaped leave date pattern with strict ISO calendar-date validation. Impossible dates such as 2026-02-29 and 2026-11-31 are rejected.
+- Added a shared substitute-coverage SQL predicate and applied it to teacher workspace batch, assignment, material, live-class, exam, evaluation, grading, publishing and attachment access.
+- Applied explicit precedence: active batch-level coverage overrides class/subject coverage for that batch.
+- Preserved the primary teacher's original batch assignment validation during leave approval.
 
-## Patch in this branch
-- Corrected the double-escaped YYYY-MM-DD leave-date pattern in `study.js`, using strict calendar-date validation.
+## Validation completed
+- 11 leave-date assertions passed locally.
+- D1 QA query confirmed batch coverage wins over overlapping class/subject coverage; the class-level substitute is denied when a batch override exists and regains access when that override is inactive.
+- Cloudflare accepted the patched modules as Worker version 27, confirming source compilation and binding inheritance.
 
-## Remaining coverage work
-- Substitute coverage is not consistently included in teacher workspace, materials, assignments, exam/evaluation and attachment authorization.
-- Batch-level coverage must take precedence over class/subject coverage when both are active.
-- End-to-end authenticated API tests still need a safe isolated preview environment.
+## Not deployed
+Version 27 is uploaded as a non-deployed candidate only. The active production deployment remains version 26 at 100%. No production login configuration or existing records were changed by this source patch.
 
-No production Worker deployment or authentication change is performed by this branch.
+## Remaining validation
+- Authenticated end-to-end tests through a protected preview URL are still outstanding. Preview URLs are disabled for the API Worker, and this branch has not enabled a public preview.
+- Review the remaining teacher question-bank ownership model and leave-approval completeness before promoting the candidate.
