@@ -162,5 +162,9 @@
   {
     "name": "student_badges",
     "sql": "CREATE TABLE student_badges (id TEXT PRIMARY KEY, student_id TEXT NOT NULL REFERENCES users(id), batch_id TEXT NOT NULL REFERENCES batches(id), subject_id INTEGER NOT NULL REFERENCES subjects(id), badge_code TEXT NOT NULL REFERENCES student_badge_definitions(badge_code), earned_percent INTEGER NOT NULL, earned_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(student_id,batch_id,subject_id,badge_code))"
+  },
+  {
+    "name": "student_class_progress",
+    "sql": "CREATE VIEW student_class_progress AS SELECT e.student_id,e.batch_id,e.subject_id,e.total_classes,COUNT(DISTINCT CASE WHEN lc.status='completed' AND lca.attendance_status IN ('present','late') THEN lc.id END) completed_classes,MIN(100,CAST(COUNT(DISTINCT CASE WHEN lc.status='completed' AND lca.attendance_status IN ('present','late') THEN lc.id END)*100.0/e.total_classes AS INTEGER)) completion_percent FROM student_class_entitlements e LEFT JOIN live_classes lc ON lc.batch_id=e.batch_id AND (lc.subject_id=e.subject_id OR lc.subject_id IS NULL) AND lc.status='completed' LEFT JOIN live_class_attendance lca ON lca.live_class_id=lc.id AND lca.student_id=e.student_id WHERE e.status='active' GROUP BY e.student_id,e.batch_id,e.subject_id,e.total_classes"
   }
 ]
