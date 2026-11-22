@@ -1297,6 +1297,7 @@ function rupees(paise){
   return "$"+usd.toLocaleString("en-US")+" · "+inrLabel;
 }
 async function loadAdminFees(){
+  await refreshInrUsdRate();
   const plansBody=$("#fee-plan-list"),accountsBody=$("#fee-account-list");
   if(!plansBody||!accountsBody)return;
   plansBody.innerHTML='<tr><td colspan="7">Loading…</td></tr>';accountsBody.innerHTML='<tr><td colspan="8">Loading…</td></tr>';
@@ -1340,6 +1341,7 @@ async function printPortalReceipt(receiptId){
   try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw new Error("Please sign in again.");const response=await fetch(API_URL+"/api/fee-receipts/"+encodeURIComponent(receiptId),{headers:{Authorization:"Bearer "+session.access_token}});if(!response.ok){const d=await response.json().catch(()=>({}));throw new Error(d.error||"Receipt could not be loaded.");}win.document.open();win.document.write(await response.text());win.document.close();}catch(e){win.close();alert(e.message);}
 }
 async function loadStudentFees(){
+  await refreshInrUsdRate();
   const root=$("#student-fee-accounts");if(!root)return;root.textContent="Loading fee information…";
   try{
     const d=await api("/api/student/fees");root.replaceChildren();
