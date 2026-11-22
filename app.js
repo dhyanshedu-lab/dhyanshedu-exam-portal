@@ -1129,7 +1129,7 @@ async function loadAssignments() {
 }
 async function loadStudents() {
   const body=$("#student-list"); body.replaceChildren();
-  const {students}=await api("/api/students"); adminCache.students=students;
+  const [{students},{batches}]=await Promise.all([api("/api/students"),api("/api/batches")]); adminCache.students=students;adminCache.batches=batches;
   students.forEach(item=>{
     const row=body.insertRow(); addCell(row,item.full_name); addCell(row,item.email);
     const status=row.insertCell(); status.append(statusTag(item.status));
@@ -1138,6 +1138,41 @@ async function loadStudents() {
     );
   });
   if (!students.length) { const row=body.insertRow(); const td=addCell(row,"No students invited yet."); td.colSpan=4; }
+  fillSelect($("#entitlement-student"),students.filter(x=>x.status==="approved"),x=>x.full_name,"Select student");
+  fillSelect($("#entitlement-batch"),batches.filter(x=>x.status==="active"),x=>x.batch_name+" · "+x.subject_name,"Select batch");
+  await loadAdminTeacherLeaves();
+}
+async function loadAdminTeacherLeaves(){
+  const body=$("#admin-teacher-leaves");if(!body)return;
+  try{
+    const [{leaves},{teachers}]=await Promise.all([api("/api/admin/teacher-leaves"),api("/api/teachers")]);
+    const approved=teachers.filter(t=>t.status==="approved");
+    body.replaceChildren();
+    for(const leave of leaves){
+      const tr=body.insertRow();addCell(tr,leave.teacher_name);addCell(tr,leave.start_date+" – "+leave.end_date);addCell(tr,leave.reason);
+      const st=tr.insertCell();st.append(statusTag(leave.status));
+      const actions=tr.insertCell();
+      if(leave.status!=="pending"){actions.textContent=leave.review_note||"—";continue;}
+      const coverage=[];
+      (leave.coverage_scopes||[]).forEach(scope=>{
+        const wrap=document.createElement("div"),label=document.createElement("label"),select=document.createElement("select");
+        label.textContent="Backup for "+scope.label;select.required=true;
+        const empty=document.createElement("option");empty.value="";empty.textContent="Select approved substitute";select.append(empty);
+        approved.filter(t=>t.id!==leave.teacher_id).forEach(t=>{const o=document.createElement("option");o.value=t.id;o.textContent=t.full_name;select.append(o);});
+        wrap.append(label,select);actions.append(wrap);coverage.push({scope,select});
+      });
+      const approve=document.createElement("button");approve.className="btn btn-primary btn-small";approve.textContent="Approve";
+      approve.addEventListener("click",async()=>{
+        if(coverage.some(x=>!x.select.value)){alert("Select an approved substitute for every affected teaching assignment.");return;}
+        const payload=coverage.map(x=>({scope_type:x.scope.scope_type,batch_id:x.scope.batch_id,class_id:x.scope.class_id,subject_id:x.scope.subject_id,substitute_teacher_id:x.select.value}));
+        try{await api("/api/admin/teacher-leaves/"+leave.id+"/review",{method:"POST",body:JSON.stringify({decision:"approved",coverage:payload})});await loadAdminTeacherLeaves();}catch(e){alert(e.message);}
+      });
+      const reject=document.createElement("button");reject.className="btn btn-danger btn-small";reject.textContent="Reject";reject.style.marginLeft="6px";
+      reject.addEventListener("click",async()=>{const note=prompt("Optional review note")||"";try{await api("/api/admin/teacher-leaves/"+leave.id+"/review",{method:"POST",body:JSON.stringify({decision:"rejected",review_note:note})});await loadAdminTeacherLeaves();}catch(e){alert(e.message);}});
+      actions.append(approve,reject);
+    }
+    if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=5;td.textContent="No teacher leave requests."; }
+  }catch(e){body.innerHTML="<tr><td colspan='5'>"+e.message+"</td></tr>";}
 }
 let examMonitoringRows = [];
 
@@ -1713,6 +1748,12 @@ document.addEventListener("submit",async e=>{
 
 
 document.addEventListener("submit",async e=>{
+  if(e.target.id==="student-entitlement-form"){
+    e.preventDefault();const f=e.target,msg=$("#entitlement-message"),btn=f.querySelector("button[type=submit]");btn.disabled=true;
+    const batch=adminCache.batches.find(x=>x.id===$("#entitlement-batch").value);
+    try{if(!batch)throw new Error("Select an active batch.");await api("/api/admin/student-entitlements",{method:"POST",body:JSON.stringify({student_id:$("#entitlement-student").value,batch_id:batch.id,subject_id:batch.subject_id,total_classes:Number($("#entitlement-total").value)})});msg.textContent="Class entitlement saved. Student progress will update automatically.";f.reset();}
+    catch(err){msg.textContent=err.message;}finally{btn.disabled=false;}
+  }
   if(e.target.id==="teacher-leave-form"){
     e.preventDefault();const f=e.target,msg=$("#teacher-leave-message"),btn=f.querySelector("button[type=submit]");btn.disabled=true;msg.textContent="Submitting request…";
     try{await api("/api/teacher/leaves",{method:"POST",body:JSON.stringify({leave_type:$("#leave-type").value,start_date:$("#leave-start").value,end_date:$("#leave-end").value,reason:$("#leave-reason").value.trim()})});f.reset();msg.textContent="Leave request submitted to Admin.";await loadTeacherLeaves();}
@@ -1736,3 +1777,4 @@ document.addEventListener("change",e=>{
   if(["fee-account-original","fee-account-discount","fee-account-scholarship"].includes(e.target.id)){const o=Number($("#fee-account-original").value||0),d=Number($("#fee-account-discount").value||0),s=Number($("#fee-account-scholarship").value||0);$("#fee-account-total").value=Math.max(0,o-d-s).toFixed(2);}
 });
 document.addEventListener("click",e=>{if(e.target.id==="refresh-fees")loadAdminFees();});
+document.addEventListener("click",e=>{if(e.target.id==="refresh-teacher-leaves")loadAdminTeacherLeaves();});
