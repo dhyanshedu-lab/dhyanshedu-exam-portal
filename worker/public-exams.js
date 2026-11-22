@@ -51,7 +51,8 @@ async function getPublishedExam(env, slug) {
   ).bind(slug).first();
 }
 async function validateAttempt(request, env, attemptId) {
-  const token = request.headers.get("X-Public-Attempt-Token") || "";
+  const authorization = request.headers.get("Authorization") || "";
+  const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
   if (!/^[a-f0-9]{64}$/i.test(token)) return null;
   const hash = await sha256(token);
   return env.DB.prepare(
