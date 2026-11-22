@@ -68,7 +68,13 @@ export async function handleStudyRequest(request,env,user,account,path,method){
     if(!leave)return fail("Pending leave request not found.",404,request);
     const coverage=Array.isArray(b.coverage)?b.coverage:[];
     if(decision==="approved"){
-      if(!coverage.length)return fail("Add a substitute for each affected batch or class assignment before approving leave.",400,request);
+      if(!coverage.length){
+        const [batchScopes,classScopes]=await Promise.all([
+          env.DB.prepare("SELECT COUNT(*) total FROM batch_teachers bt JOIN batches b ON b.id=bt.batch_id WHERE bt.teacher_id=? AND b.status='active'").bind(leave.teacher_id).first(),
+          env.DB.prepare("SELECT COUNT(*) total FROM teacher_assignments WHERE teacher_id=?").bind(leave.teacher_id).first()
+        ]);
+        if((batchScopes?.total||0)+(classScopes?.total||0)>0)return fail("Add a substitute for each affected batch or class assignment before approving leave.",400,request);
+      }
       for(const c of coverage){
         const scope=txt(c.scope_type,20),sub=txt(c.substitute_teacher_id,80);
         if(!["batch","class_subject"].includes(scope)||!sub||sub===leave.teacher_id)return fail("Invalid substitute coverage details.",400,request);
@@ -77,8 +83,8 @@ export async function handleStudyRequest(request,env,user,account,path,method){
         if(scope==="batch"){
           const bid=txt(c.batch_id,80);
           const primary=await env.DB.prepare("SELECT b.id,b.class_id,b.subject_id FROM batches b JOIN batch_teachers bt ON bt.batch_id=b.id WHERE b.id=? AND bt.teacher_id=? AND b.status='active'").bind(bid,leave.teacher_id).first();
-          const qualified=await env.DB.prepare("SELECT 1 FROM teacher_assignments WHERE teacher_id=? AND class_id=? AND subject_id=?").bind(sub,primary?.class_id,primary?.subject_id).first();
-          if(!primary||!qualified)return fail("Substitute must be assigned to the batch's class and subject.",400,request);
+          const qualified=primary?await env.DB.prepare("SELECT 1 ok WHERE EXISTS (SELECT 1 FROM teacher_assignments WHERE teacher_id=? AND class_id=? AND subject_id=?) OR EXISTS (SELECT 1 FROM batch_teachers WHERE teacher_id=? AND batch_id=?)").bind(sub,primary.class_id,primary.subject_id,sub,bid).first():null;
+          if(!primary||!qualified)return fail("Substitute must be assigned to the batch's class and subject or already assigned to this batch.",400,request);
           c._batch=primary;
         }else{
           const classId=Number(c.class_id),subjectId=Number(c.subject_id);
@@ -93,7 +99,9 @@ export async function handleStudyRequest(request,env,user,account,path,method){
     const statements=[env.DB.prepare("UPDATE teacher_leaves SET status=?,reviewed_by=?,reviewed_at=datetime('now'),review_note=?,updated_at=datetime('now') WHERE id=? AND status='pending'").bind(decision,user.id,note,leave.id)];
     if(decision==="approved")for(const c of coverage){
       const scope=txt(c.scope_type,20),bid=scope==="batch"?txt(c.batch_id,80):null,cid=scope==="class_subject"?Number(c.class_id):null,sid=scope==="class_subject"?Number(c.subject_id):null;
-      statements.push(env.DB.prepare("INSERT INTO teacher_coverage_assignments(id,leave_id,scope_type,batch_id,class_id,subject_id,primary_teacher_id,substitute_teacher_id,effective_from,effective_to,reason,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").bind(crypto.randomUUID(),leave.id,scope,bid,cid,sid,leave.teacher_id,txt(c.substitute_teacher_id,80),leave.start_date,leave.end_date,note,user.id));
+      const substituteId=txt(c.substitute_teacher_id,80);
+      statements.push(env.DB.prepare("INSERT INTO teacher_coverage_assignments(id,leave_id,scope_type,batch_id,class_id,subject_id,primary_teacher_id,substitute_teacher_id,effective_from,effective_to,reason,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").bind(crypto.randomUUID(),leave.id,scope,bid,cid,sid,leave.teacher_id,substituteId,leave.start_date,leave.end_date,note,user.id));
+      statements.push(env.DB.prepare("INSERT INTO notifications(id,user_id,title,message,notification_type) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),substituteId,"Temporary class coverage assigned","You are covering a teaching assignment from "+leave.start_date+" to "+leave.end_date+".","teacher_coverage"));
     }
     statements.push(env.DB.prepare("INSERT INTO notifications(id,user_id,title,message,notification_type) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),leave.teacher_id,"Leave request "+decision,"Your leave request from "+leave.start_date+" to "+leave.end_date+" was "+decision+".","teacher_leave"));
     statements.push(env.DB.prepare("INSERT INTO audit_logs(id,actor_id,action,entity_type,entity_id,details) VALUES(?,?,?,?,?,?)").bind(crypto.randomUUID(),user.id,"teacher_leave_"+decision,"teacher_leave",leave.id,JSON.stringify({coverage_count:decision==="approved"?coverage.length:0,review_note:note})));
