@@ -391,8 +391,6 @@ CREATE TABLE IF NOT EXISTS public_exam_publications (
     status TEXT NOT NULL DEFAULT 'draft'
         CHECK (status IN ('draft','published','archived')),
     max_attempts INTEGER NOT NULL DEFAULT 1 CHECK (max_attempts BETWEEN 1 AND 10),
-    results_mode TEXT NOT NULL DEFAULT 'immediate'
-        CHECK (results_mode IN ('immediate','after_review')),
     starts_at TEXT,
     ends_at TEXT,
     published_at TEXT,
@@ -420,23 +418,23 @@ CREATE TABLE IF NOT EXISTS public_assessment_registrations (
     converted_student_id TEXT REFERENCES users(id)
 );
 
+-- Only the guest identity, timing and final score are retained. No answer text,
+-- selected options, per-question responses or answer-sheet table is created.
 CREATE TABLE IF NOT EXISTS public_assessment_attempts (
     id TEXT PRIMARY KEY,
     registration_id TEXT NOT NULL REFERENCES public_assessment_registrations(id),
     exam_id TEXT NOT NULL REFERENCES exams(id),
-    exam_attempt_id TEXT REFERENCES exam_attempts(id),
     attempt_number INTEGER NOT NULL DEFAULT 1,
     access_token_hash TEXT NOT NULL UNIQUE,
     started_at TEXT NOT NULL DEFAULT (datetime('now')),
     submitted_at TEXT,
     result_released_at TEXT,
     expires_at TEXT NOT NULL,
-    last_activity_at TEXT NOT NULL DEFAULT (datetime('now')),
     score REAL,
     total_marks REAL,
     percentage REAL,
     status TEXT NOT NULL DEFAULT 'in_progress'
-        CHECK (status IN ('registered','in_progress','submitted','evaluated','expired')),
+        CHECK (status IN ('in_progress','submitted','expired')),
     UNIQUE (registration_id, exam_id, attempt_number)
 );
 
@@ -449,22 +447,6 @@ CREATE TABLE IF NOT EXISTS public_assessment_rate_limits (
     UNIQUE (ip_hash, route_key, window_start)
 );
 
-CREATE TABLE IF NOT EXISTS public_assessment_answers (
-    id TEXT PRIMARY KEY,
-    public_attempt_id TEXT NOT NULL REFERENCES public_assessment_attempts(id),
-    exam_question_id TEXT NOT NULL REFERENCES exam_questions(id),
-    answer_text TEXT,
-    selected_option_ids TEXT,
-    answered_at TEXT NOT NULL DEFAULT (datetime('now')),
-    is_correct INTEGER CHECK (is_correct IN (0,1)),
-    marks_awarded REAL,
-    teacher_feedback TEXT,
-    evaluated_by TEXT REFERENCES users(id),
-    evaluated_at TEXT,
-    UNIQUE (public_attempt_id, exam_question_id)
-);
-
--- ---------------------------------------------------------------------------
 -- 6. Uploaded handwritten answer sheets and controlled evaluation
 -- ---------------------------------------------------------------------------
 
