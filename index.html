@@ -121,6 +121,7 @@
       <a class="nav-item" data-page="live-classes" data-admin-only href="#live-classes"><span>◷</span> Live classes</a>
       <a class="nav-item" data-page="fees" data-admin-only href="#fees"><span>₹</span> Fee management</a>
       <a class="nav-item" data-page="enquiries" data-admin-only href="#enquiries"><span>✉</span> Website enquiries</a>
+      <a class="nav-item" data-page="system-health" data-admin-only href="#system-health"><span>◉</span> System health & usage</a>
     </nav>
     <div class="sidebar-bottom">
       <div class="secure-note"><span>●</span><div><b>Secure workspace</b><small>Role-based access enabled</small></div></div>
@@ -317,6 +318,33 @@
           <div class="table-scroll"><table><thead><tr><th>Class</th><th>Batch</th><th>Teacher</th><th>Schedule</th><th>Status</th><th>Enrolled</th><th>Marked</th><th>Present / Late</th><th>Attendance</th></tr></thead><tbody id="admin-live-class-list"><tr><td colspan="9">Loading…</td></tr></tbody></table></div>
         </div>
         <div id="admin-live-attendance" class="table-card hidden"><div class="table-heading"><h3 id="admin-live-attendance-title">Attendance details</h3></div><div class="table-scroll"><table><thead><tr><th>Student</th><th>Email</th><th>Status</th><th>Marked by</th></tr></thead><tbody id="admin-live-attendance-list"></tbody></table></div></div>
+      </section>
+      <section id="system-health-page" class="hidden">
+        <div class="section-heading page-title"><div><h2>System health & usage</h2><p class="muted">Live connectivity checks for the services powering DhyanshEdu.</p></div><button id="refresh-system-health" class="btn btn-primary" type="button">Refresh status</button></div>
+        <div class="section-heading"><div><h3>Service health</h3><p class="muted">Checked directly from the portal backend. No provider secrets are exposed here.</p></div><span id="system-health-refreshed" class="live-tag">Not checked yet</span></div>
+        <div class="stats-grid system-health-grid">
+          <article class="stat-card"><p>Cloudflare Worker API</p><strong id="health-worker">—</strong><small id="health-worker-detail">Checking endpoint</small></article>
+          <article class="stat-card"><p>Cloudflare D1 database</p><strong id="health-d1">—</strong><small id="health-d1-detail">Checking database</small></article>
+          <article class="stat-card"><p>Cloudflare R2 files</p><strong id="health-r2">—</strong><small id="health-r2-detail">Checking bucket access</small></article>
+          <article class="stat-card"><p>Supabase Auth</p><strong id="health-supabase">—</strong><small id="health-supabase-detail">Checking authentication service</small></article>
+        </div>
+        <div class="section-heading lower"><div><h3>Portal activity</h3><p class="muted">Current record totals from D1. These are portal records, not provider quota consumption.</p></div></div>
+        <div class="stats-grid system-health-grid">
+          <article class="stat-card"><p>Registered users</p><strong id="usage-users">—</strong><small>Active and inactive profiles</small></article>
+          <article class="stat-card"><p>Examinations</p><strong id="usage-exams">—</strong><small>Exam records</small></article>
+          <article class="stat-card"><p>Exam attempts</p><strong id="usage-attempts">—</strong><small>Student attempt records</small></article>
+          <article class="stat-card"><p>Stored file records</p><strong id="usage-files">—</strong><small>Study and exam attachments</small></article>
+        </div>
+        <div class="table-card system-usage-card"><div class="table-heading"><h3>Free-plan quota reference</h3><p class="muted">Plan ceilings only. Live usage percentages are not available through the portal connection yet.</p></div>
+          <div class="table-scroll"><table><thead><tr><th>Service</th><th>Free-plan allowance</th><th>Live usage</th><th>Where to verify</th></tr></thead><tbody>
+            <tr><td><b>Workers</b></td><td>100,000 requests/day; 10 ms CPU/request</td><td>Provider dashboard</td><td><a href="https://dash.cloudflare.com/ef201eb4b3c45aa3b998805c2571e83b/workers-and-pages" target="_blank" rel="noopener">Cloudflare Workers</a></td></tr>
+            <tr><td><b>D1</b></td><td>5 million rows read/day; 100,000 rows written/day; 5 GB storage</td><td>Provider dashboard</td><td><a href="https://dash.cloudflare.com/ef201eb4b3c45aa3b998805c2571e83b/workers/d1" target="_blank" rel="noopener">Cloudflare D1</a></td></tr>
+            <tr><td><b>R2</b></td><td>10 GB-month storage; 1 million Class A; 10 million Class B operations/month</td><td>Provider dashboard</td><td><a href="https://dash.cloudflare.com/ef201eb4b3c45aa3b998805c2571e83b/r2/overview" target="_blank" rel="noopener">Cloudflare R2</a></td></tr>
+            <tr><td><b>Supabase Auth</b></td><td>50,000 monthly active users</td><td>Provider dashboard</td><td><a href="https://supabase.com/dashboard/project/vxifxiuitprdafvgpojh" target="_blank" rel="noopener">Supabase project usage</a></td></tr>
+          </tbody></table></div>
+        </div>
+        <p class="hint">Usage limits can change. This reference is not a live meter. Use the provider dashboards for authoritative quota consumption and billing details. D1 free-tier daily row limits can stop queries until the UTC daily reset if exceeded.</p>
+        <p id="system-health-message" class="message" role="status"></p>
       </section>
       <p id="dashboard-message" class="message"></p>
       <footer class="page-footer">DhyanshEdu · Dhyan Today. Math Better Tomorrow.</footer>
