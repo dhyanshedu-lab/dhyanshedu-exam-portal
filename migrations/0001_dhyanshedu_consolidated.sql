@@ -383,6 +383,24 @@ CREATE TABLE IF NOT EXISTS invitation_events (
 -- 5. Public self-assessment registration and attempt linkage
 -- ---------------------------------------------------------------------------
 
+CREATE TABLE IF NOT EXISTS public_exam_publications (
+    id TEXT PRIMARY KEY,
+    exam_id TEXT NOT NULL UNIQUE REFERENCES exams(id),
+    public_slug TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft','published','archived')),
+    max_attempts INTEGER NOT NULL DEFAULT 1 CHECK (max_attempts BETWEEN 1 AND 10),
+    results_mode TEXT NOT NULL DEFAULT 'immediate'
+        CHECK (results_mode IN ('immediate','after_review')),
+    starts_at TEXT,
+    ends_at TEXT,
+    published_at TEXT,
+    published_by TEXT REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK (ends_at IS NULL OR starts_at IS NULL OR ends_at > starts_at)
+);
+
 CREATE TABLE IF NOT EXISTS public_assessment_registrations (
     id TEXT PRIMARY KEY,
     student_name TEXT NOT NULL,
@@ -393,6 +411,7 @@ CREATE TABLE IF NOT EXISTS public_assessment_registrations (
     curriculum_id TEXT REFERENCES curricula(id),
     exam_pathway_id TEXT REFERENCES exam_pathways(id),
     privacy_notice_version TEXT NOT NULL,
+    privacy_consent_at TEXT NOT NULL,
     registered_at TEXT NOT NULL DEFAULT (datetime('now')),
     marketing_consent INTEGER NOT NULL DEFAULT 0 CHECK (marketing_consent IN (0,1)),
     converted_enquiry_id TEXT REFERENCES enquiries(id),
@@ -405,14 +424,32 @@ CREATE TABLE IF NOT EXISTS public_assessment_attempts (
     exam_id TEXT NOT NULL REFERENCES exams(id),
     exam_attempt_id TEXT REFERENCES exam_attempts(id),
     attempt_number INTEGER NOT NULL DEFAULT 1,
-    started_at TEXT,
+    access_token_hash TEXT NOT NULL UNIQUE,
+    started_at TEXT NOT NULL DEFAULT (datetime('now')),
     submitted_at TEXT,
+    expires_at TEXT NOT NULL,
+    last_activity_at TEXT NOT NULL DEFAULT (datetime('now')),
     score REAL,
     total_marks REAL,
     percentage REAL,
-    status TEXT NOT NULL DEFAULT 'registered'
+    status TEXT NOT NULL DEFAULT 'in_progress'
         CHECK (status IN ('registered','in_progress','submitted','evaluated','expired')),
     UNIQUE (registration_id, exam_id, attempt_number)
+);
+
+CREATE TABLE IF NOT EXISTS public_assessment_answers (
+    id TEXT PRIMARY KEY,
+    public_attempt_id TEXT NOT NULL REFERENCES public_assessment_attempts(id),
+    exam_question_id TEXT NOT NULL REFERENCES exam_questions(id),
+    answer_text TEXT,
+    selected_option_ids TEXT,
+    answered_at TEXT NOT NULL DEFAULT (datetime('now')),
+    is_correct INTEGER CHECK (is_correct IN (0,1)),
+    marks_awarded REAL,
+    teacher_feedback TEXT,
+    evaluated_by TEXT REFERENCES users(id),
+    evaluated_at TEXT,
+    UNIQUE (public_attempt_id, exam_question_id)
 );
 
 -- ---------------------------------------------------------------------------
@@ -747,10 +784,16 @@ CREATE INDEX IF NOT EXISTS idx_invitations_status_expiry
     ON invitations(status, expires_at);
 CREATE INDEX IF NOT EXISTS idx_invitations_email
     ON invitations(email, invite_type);
+CREATE INDEX IF NOT EXISTS idx_public_exam_publications_status
+    ON public_exam_publications(status, starts_at, ends_at);
 CREATE INDEX IF NOT EXISTS idx_public_assessment_phone
     ON public_assessment_registrations(phone);
 CREATE INDEX IF NOT EXISTS idx_public_assessment_attempts_registration
     ON public_assessment_attempts(registration_id, exam_id);
+CREATE INDEX IF NOT EXISTS idx_public_assessment_attempts_expiry
+    ON public_assessment_attempts(status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_public_assessment_answers_attempt
+    ON public_assessment_answers(public_attempt_id);
 CREATE INDEX IF NOT EXISTS idx_answer_sheets_student_status
     ON answer_sheet_submissions(student_id, status);
 CREATE INDEX IF NOT EXISTS idx_answer_sheets_evaluator
@@ -811,8 +854,10 @@ WHERE type = 'table'
     'student_admissions',
     'invitations',
     'invitation_events',
+    'public_exam_publications',
     'public_assessment_registrations',
     'public_assessment_attempts',
+    'public_assessment_answers',
     'answer_sheet_submissions',
     'answer_sheet_pages',
     'answer_evaluations',
