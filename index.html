@@ -220,6 +220,15 @@
           <button class="btn btn-primary" id="save-student-button" type="submit">+ Invite student</button>
         </form><p id="student-message" class="message"></p></div>
         <div class="table-card"><div class="table-heading"><h3>Students</h3><p class="muted">Pending students need Admin approval before signing in.</p></div><div class="table-scroll"><table><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Manage status</th></tr></thead><tbody id="student-list"></tbody></table></div></div>
+        <div class="form-card"><h3>Set student class entitlement</h3><p class="muted">Set the total number of classes for each student in a batch. Progress is calculated from completed lessons and attendance.</p>
+          <form id="student-entitlement-form" class="form-grid">
+            <div><label for="entitlement-student">Student</label><select id="entitlement-student" required><option value="">Select student</option></select></div>
+            <div><label for="entitlement-batch">Batch</label><select id="entitlement-batch" required><option value="">Select batch</option></select></div>
+            <div><label for="entitlement-total">Total classes</label><input id="entitlement-total" type="number" min="1" max="10000" required></div>
+            <div><button class="btn btn-primary" type="submit">Save class entitlement</button></div>
+          </form><p id="entitlement-message" class="message"></p>
+        </div>
+        <div class="table-card"><div class="table-heading"><h3>Teacher leave requests</h3><button id="refresh-teacher-leaves" class="btn btn-secondary btn-small" type="button">Refresh</button></div><div class="table-scroll"><table><thead><tr><th>Teacher</th><th>Dates</th><th>Reason</th><th>Status</th><th>Review</th></tr></thead><tbody id="admin-teacher-leaves"><tr><td colspan="5">Loading…</td></tr></tbody></table></div></div>
       </section>
       <section id="fees-page" class="hidden">
         <div class="section-heading page-title"><div><h2>Fee management</h2><p class="muted">Create fee plans, preserve each student's agreed fee and record manual payments.</p></div><button id="refresh-fees" class="btn btn-primary" type="button">Refresh</button></div>
