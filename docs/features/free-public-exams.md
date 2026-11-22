@@ -1,88 +1,62 @@
 # Free public examinations
 
-Status: approved product scope; implementation in progress.
+Status: development implementation; production launch pending separate review.
 
 ## Goal
-
-Add a public **Free Online Exams** experience to the existing `dhyanshedu.com` website. It must use the existing DhyanshEdu exam question bank and exam engine where safe, while keeping public attempts separate from enrolled-student attempts.
-
-This is an addition to the existing public website and portal. It is not a replacement site or a separate application.
+Add a public Free Online Exams experience to the existing DhyanshEdu website and use the existing exam question bank without creating student portal accounts.
 
 ## Student journey
+1. Student browses exams explicitly published by Admin.
+2. Before starting, student provides student name, mobile number and class; parent/guardian name and email are optional.
+3. Student accepts the privacy notice. Optional marketing consent is separate and unchecked by default.
+4. Student completes a timed, objective multiple-choice exam. Answers remain in browser memory only.
+5. On Submit (or timer expiry), the browser sends the selected options once to the Worker for scoring.
+6. Worker validates and scores the submission, stores only the final score/percentage and submission timestamp, and immediately returns the score, correct answers and explanations.
+7. The Worker does not insert, update, log or otherwise persist the selected options or answer text. There is no autosave, resume, answer-sheet retrieval, manual grading or delayed result release.
 
-1. Student opens the Free Online Exams page on the public website.
-2. Student browses only exams explicitly published for public access.
-3. Before starting, student provides name, mobile number and class; email and parent name are optional. A clear privacy notice must be accepted. Marketing consent is separate and unchecked by default.
-4. Student receives a one-time attempt token and begins a timed exam.
-5. Question text and answer options are delivered without correct-answer flags or explanations. Public question-media delivery is a follow-on item.
-6. Answers are saved server-side. The server enforces the deadline and attempt limit.
-7. Objective-only exams can show an instant score and explanations. Exams containing numerical/descriptive questions that need manual marking remain pending until a teacher/admin evaluates them.
-8. Student can view only the result belonging to their valid attempt token.
+Refreshing or leaving the page before submission ends the in-browser attempt; the student must start a new allowed attempt. The attempt token exists only in page memory and its hash is stored for server-side authorization.
 
-No public route may expose unpublished exams, private batch exams, answer keys, other students' attempts, or admin/teacher data.
-
-## Admin and teacher workflow
-
-- Teacher continues to create questions and exams using the existing question bank and authoring workflow.
-- Admin explicitly publishes an eligible exam to the public catalogue, assigns a stable public slug, chooses the attempt limit and result mode, and can unpublish/archive it.
-- Public publication is independent from the exam's batch enrolment visibility. Publishing publicly must not enroll a guest into a batch or expose the exam through unrelated student workspaces.
-- Admin can review public registrations and attempts and evaluate descriptive answers in the first release. Teacher-scoped public-attempt evaluation is a follow-on enhancement; the first release does not expose guest personal details in teacher workspaces.
-- Unpublishing prevents new registrations/attempts. Existing in-progress attempts may finish until their server-side deadline unless an admin explicitly closes them.
+## Admin workflow
+- Admin publishes/unpublishes eligible exams with a public slug, attempt limit and optional availability window.
+- Only exams containing MCQ/multiple-select questions with at least one correct option per question can be published, because the public experience must show immediate results.
+- Admin sees student contact details, class, exam, attempt status and final score in the Free Public Exams page.
+- Student contact details and score are retained for enquiry follow-up. The Admin view does not expose submitted answers because they are not stored.
+- Existing enquiry records and normal website enquiries remain separate and unchanged.
 
 ## Data model
-
-- `public_exam_publications`: explicit allow-list of public exams, slug, publication state, date window, attempt limit and result mode.
-- `public_assessment_registrations`: minimal guest identity, class, privacy-notice version and consent timestamp; marketing consent remains separate.
-- `public_assessment_attempts`: independent guest attempt, attempt number, hashed access token, server-side expiry, score and status. It does not require a Supabase user or an `exam_attempts.student_id` row.
-- `public_assessment_answers`: answer rows keyed to the public attempt and existing exam-question IDs, with optional evaluator feedback.
-
-This separation is deliberate: the existing `exam_attempts` table requires a registered D1 student user, so anonymous public attempts must not be forced into that table or represented as fake student accounts.
+- `public_exam_publications`: public allow-list, slug, status, date window and attempt limit.
+- `public_assessment_registrations`: student/guardian contact details, class and privacy/marketing consent.
+- `public_assessment_attempts`: attempt metadata, hashed in-session token, timestamps and final score only.
+- `public_assessment_rate_limits`: hashed-IP request counters.
+- There is deliberately no `public_assessment_answers` table.
 
 ## API contract
+Public origin-checked routes:
+- `GET /api/public/exams`: safe public catalogue fields.
+- `POST /api/public/exams/:slug/register`: validate contact details and consent, create enquiry registration and attempt metadata, return one-time in-memory token.
+- `GET /api/public/attempts/:id`: validate token and return questions/options without correct-answer flags.
+- `POST /api/public/attempts/:id/submit`: accept the answer payload once, validate every question/option, score server-side, persist only final score and return result/answer key immediately.
 
-Public, origin-checked routes (no Supabase login):
-- `GET /api/public/exams` — safe catalogue fields only.
-- `GET /api/public/exams/:slug` — public instructions and exam metadata only.
-- `POST /api/public/exams/:slug/register` — validate consent and guest details, enforce publication window/attempt limit, create registration and attempt, return a one-time raw token (store only its SHA-256 hash).
-- `GET /api/public/attempts/:id` — return questions/options and saved answers only after validating the attempt token.
-- `POST /api/public/attempts/:id/answers` — validate token, ownership, question membership and server-side deadline before saving.
-- `POST /api/public/attempts/:id/submit` — server-side scoring and immutable submission.
-- `GET /api/public/attempts/:id/result` — reveal answers, correct options and explanations only when the configured result policy allows it.
+Admin-only routes:
+- `GET /api/admin/public-exams`: publication controls and exam catalogue.
+- `PATCH /api/admin/public-exams/:examId`: publish, update or unpublish.
+- `GET /api/admin/public-attempts`: enquiry/contact details and final score only.
 
-Admin-only routes must manage publication and review using the existing approved Admin authorization gate. Never trust a client-supplied role, score, deadline or attempt number.
+## Privacy and security
+- Store a SHA-256 hash of the random attempt token; never persist the raw token.
+- No selected options, written answers, per-question responses or answer-sheet rows are persisted.
+- Answers are transmitted once over HTTPS for scoring; request bodies must not be logged.
+- Server validates the token, deadline, question IDs, option ownership, attempt limit and publication status.
+- Public routes require an allow-listed Origin and use per-IP hashed rate limits. Add Cloudflare Turnstile before public launch.
+- Require privacy-notice acceptance; marketing consent is optional.
+- Confirm published privacy-policy wording, access controls and retention/deletion rules for enquiry details and final scores before launch.
 
-## Security and privacy requirements
+## Validation and deployment sequence
+1. Validate the DDL on disposable SQLite and review against the actual D1 baseline.
+2. Run API/browser end-to-end tests in a separate development Worker/D1 environment.
+3. Confirm no answer values are present in D1 after submission and Admin reporting shows only contact details and final score.
+4. Add Turnstile and verify privacy/retention language.
+5. Deploy Worker and public website together only after successful development validation and separate production approval.
 
-- Store only a hash of the random attempt token; never store or log the raw token.
-- Use cryptographically random tokens, strict attempt ownership checks, expiry checks and server-side time enforcement.
-- Do not return `is_correct`, correct option IDs, marks-awarded values or explanations before results are eligible for release.
-- Validate every selected option against the exact exam question.
-- Enforce attempt limits in D1 transactions/batches, not only in browser code.
-- Keep guest attempts separate from registered student accounts and batch enrolments.
-- Require explicit privacy-notice acceptance; marketing consent is optional and separate.
-- Enforce per-IP hashed request limits for guest registration, answer saves and submissions; add Cloudflare Turnstile before public launch to reduce automated abuse.
-- Confirm the privacy notice against the published privacy policy, define guest-record retention/deletion rules, and document who can access guest contact details.
-- Use parameterized SQL, bounded request sizes and strict CORS origin allow-listing.
-- Audit publish/unpublish, evaluation and result release actions.
-
-## Implementation sequence
-
-1. Review and validate the schema changes against the captured D1 baseline and a disposable SQLite fixture. Do not apply to production D1.
-2. Implement and test the public Worker API, including token validation, attempt limits, deadlines, scoring and result gating.
-3. Build the responsive public Free Online Exams page and timed exam/result screens in the existing public-site repository.
-4. Add Admin publication controls and public-attempt monitoring to the existing portal.
-5. Run end-to-end tests for guest registration, expired tokens, repeat attempts, unpublished exams, answer-key leakage, timer expiry, manual marking and result visibility.
-6. Deploy to a development environment first. Production deployment and any D1 migration require separate review and explicit approval.
-
-## Current known constraints
-
-- The existing portal Worker source in GitHub and the currently deployed Cloudflare Worker must be reconciled before changing/deploying API code.
-- The consolidated migration has not been approved for production execution. The new schema is a draft until tested against the actual D1 schema.
-- Do not place real student/guest personal data in test fixtures or commit secrets.
-
-
-## Current database inspection (read-only, 2026-11-22)
-
-A read-only inspection of the existing Cloudflare D1 database confirmed that the required parent tables are present: `users`, `exams`, `exam_questions`, `questions`, `question_options`, `exam_attempts`, `results`, and `audit_logs`. The public-exam tables introduced by this branch are not installed yet. No D1 rows or schema were changed during this inspection.
-
-The public-exam migration still needs to be validated against the complete live schema and applied only to a reviewed development database first. The existing database contains test records; do not assume its current contents are disposable without a backup and explicit approval.
+## Production safety
+The current work remains in draft development branches. No production Worker, Pages deployment or D1 migration has been performed. Back up and review the live D1 database before any approved schema change.
