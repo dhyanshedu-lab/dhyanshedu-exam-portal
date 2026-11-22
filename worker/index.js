@@ -1,3 +1,4 @@
+import { handlePublicExamRequest, handleAdminPublicExamRequest } from "./public-exams.js";
 import { handleStudyRequest, teacherCoveragePredicate } from "./study.js";
 import { handleFeeRequest } from "./fees.js";
 // DhyanshEdu Cloudflare Worker — consolidated working source
@@ -213,6 +214,9 @@ export default {
          .bind(id,student,parent||null,phone,email,studentClass,board||null,courseInterest||null).run();
        return reply({success:true,id,message:"Your enquiry has been received. Our team will contact you."},201,request);
      }
+
+     const publicExamResponse = await handlePublicExamRequest(request, env, path, method);
+     if (publicExamResponse) return publicExamResponse;
 
      const user = await authUser(request,env);
 
@@ -734,6 +738,9 @@ export default {
      if (!admin) return reply({error:"Admin access required"},403,request);
 
 
+
+     const publicAdminResponse = await handleAdminPublicExamRequest(request, env, path, method, user);
+     if (publicAdminResponse) return publicAdminResponse;
 
      // Admin-only examination monitoring and performance overview.
      if(path==="/api/admin/exam-monitoring" && method==="GET"){
