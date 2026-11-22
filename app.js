@@ -1271,7 +1271,31 @@ async function loadAdminLiveClasses(){
 async function loadAdminLiveAttendance(id,title){const panel=$("#admin-live-attendance"),body=$("#admin-live-attendance-list");panel.classList.remove("hidden");$("#admin-live-attendance-title").textContent="Attendance · "+title;body.innerHTML="<tr><td colspan=\"4\">Loading…</td></tr>";try{const d=await api("/api/admin/live-classes/"+encodeURIComponent(id)+"/attendance");body.replaceChildren();(d.students||[]).forEach(s=>{const tr=body.insertRow();[s.student_name,s.email,s.attendance_status||"Not marked",s.marked_by_name||"—"].forEach(v=>{const td=tr.insertCell();td.textContent=v;});});if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=4;td.textContent="No active students enrolled in this batch.";}}catch(e){body.textContent=e.message;}}
 async function openTeacherAttendance(id,title){let panel=$("#teacher-attendance-panel");if(!panel){panel=document.createElement("div");panel.id="teacher-attendance-panel";panel.className="form-card";$("#my-live-list").closest(".table-card").after(panel);}panel.innerHTML="<h3>Attendance · "+title+"</h3><p class=\"muted\">Choose Present, Late, Absent or Excused for each actively enrolled student.</p><div class=\"table-scroll\"><table><thead><tr><th>Student</th><th>Email</th><th>Attendance</th></tr></thead><tbody id=\"teacher-attendance-roster\"><tr><td colspan=\"3\">Loading…</td></tr></tbody></table></div><button id=\"save-teacher-attendance\" class=\"btn btn-primary\" type=\"button\" data-class-id=\""+id+"\">Save attendance</button><p id=\"teacher-attendance-message\" class=\"message\"></p>";try{const d=await api("/api/teacher/live-classes/"+encodeURIComponent(id)+"/attendance"),body=$("#teacher-attendance-roster");body.replaceChildren();(d.students||[]).forEach(s=>{const tr=body.insertRow();[s.student_name,s.email].forEach(v=>{const td=tr.insertCell();td.textContent=v||"—";});const td=tr.insertCell(),sel=document.createElement("select");sel.className="status-select";sel.dataset.studentId=s.student_id;[["","Select status"],["present","Present"],["late","Late"],["absent","Absent"],["excused","Excused"]].forEach(([v,l])=>{const o=document.createElement("option");o.value=v;o.textContent=l;sel.append(o);});sel.value=s.attendance_status||"";td.append(sel);});if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=3;td.textContent="No active students enrolled in this batch.";}}catch(e){panel.textContent=e.message;}}
 
-function rupees(paise){return "₹"+(Number(paise||0)/100).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});}
+let inrUsdRate = null;
+let inrUsdRateFetchedAt = 0;
+async function refreshInrUsdRate(force=false){
+  const now=Date.now();
+  if(!force&&inrUsdRate&&now-inrUsdRateFetchedAt<6*60*60*1000)return inrUsdRate;
+  try{
+    const response=await fetch("https://open.er-api.com/v6/latest/INR",{cache:"no-store"});
+    if(!response.ok)throw new Error("Exchange-rate service unavailable");
+    const data=await response.json();
+    const rate=Number(data?.rates?.USD);
+    if(data?.result!=="success"||!Number.isFinite(rate)||rate<=0)throw new Error("Invalid INR/USD exchange rate");
+    inrUsdRate=rate;inrUsdRateFetchedAt=now;
+    return rate;
+  }catch(error){
+    console.warn("Could not refresh INR/USD rate; displaying INR only.",error);
+    return inrUsdRate;
+  }
+}
+function rupees(paise){
+  const inr=Number(paise||0)/100;
+  const inrLabel="₹"+inr.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
+  if(!inrUsdRate)return inrLabel;
+  const usd=Math.ceil(inr*inrUsdRate);
+  return "$"+usd.toLocaleString("en-US")+" · "+inrLabel;
+}
 async function loadAdminFees(){
   const plansBody=$("#fee-plan-list"),accountsBody=$("#fee-account-list");
   if(!plansBody||!accountsBody)return;
