@@ -47,7 +47,7 @@ const audit = (env, actor, action, entity, details) => env.DB.prepare(
 
 async function enforceRateLimit(request, env, routeKey, limit, windowSeconds) {
   const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-  const ipHash = await sha256(ip);
+  const ipHash = await sha256((env.PUBLIC_RATE_LIMIT_SALT || "dhyanshedu-public-rate-limit") + "|" + ip);
   const windowStart = Math.floor(Date.now() / 1000 / windowSeconds) * windowSeconds;
   const row = await env.DB.prepare(
     "INSERT INTO public_assessment_rate_limits(id,ip_hash,route_key,window_start,request_count) VALUES(?,?,?,?,1) ON CONFLICT(ip_hash,route_key,window_start) DO UPDATE SET request_count=request_count+1 RETURNING request_count"
