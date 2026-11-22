@@ -53,7 +53,7 @@ async function enforceRateLimit(request, env, routeKey, limit, windowSeconds) {
     "INSERT INTO public_assessment_rate_limits(id,ip_hash,route_key,window_start,request_count) VALUES(?,?,?,?,1) ON CONFLICT(ip_hash,route_key,window_start) DO UPDATE SET request_count=request_count+1 RETURNING request_count"
   ).bind(uuid(), ipHash, routeKey, windowStart).first();
   if (Number(row?.request_count || 0) > limit) return fail("Too many requests. Please wait and try again.", 429, request);
-  await env.DB.prepare("DELETE FROM public_assessment_rate_limits WHERE window_start < ?").bind(Math.floor(Date.now()/1000)-172800).run();
+  if (routeKey.startsWith("register:")) await env.DB.prepare("DELETE FROM public_assessment_rate_limits WHERE window_start < ?").bind(Math.floor(Date.now()/1000)-172800).run();
   return null;
 }
 
@@ -407,9 +407,10 @@ export async function handleAdminPublicExamRequest(request, env, path, method, u
     }
     if (seen.size !== allowed.size) return fail("Grade every written/numerical question before completing evaluation.", 400, request);
     const auto = await env.DB.prepare(
-      "SELECT COALESCE(SUM(COALESCE(marks_awarded,0)),0) score FROM public_assessment_answers WHERE public_attempt_id=?"
-    ).bind(attempt.id).first();
-    const score = Math.max(0, Number(auto?.score || 0)), total = Number(attempt.total_marks || 0);
+      "SELECT COALESCE(SUM(COALESCE(pa.marks_awarded,0)),0) score FROM public_assessment_answers pa WHERE pa.public_attempt_id=? AND pa.exam_question_id NOT IN (SELECT eq.id FROM exam_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.exam_id=? AND q.question_type IN ('numerical','short_answer','long_answer'))"
+    ).bind(attempt.id, attempt.exam_id).first();
+    const manualScore = grades.reduce((sum, grade) => sum + Number(grade.marks_awarded), 0);
+    const score = Math.max(0, Number(auto?.score || 0) + manualScore), total = Number(attempt.total_marks || 0);
     const percentage = total > 0 ? Math.round(score / total * 10000) / 100 : 0;
     writes.push(env.DB.prepare(
       "UPDATE public_assessment_attempts SET status='evaluated',score=?,total_marks=?,percentage=? WHERE id=?"
