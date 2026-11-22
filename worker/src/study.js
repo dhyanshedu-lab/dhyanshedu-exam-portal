@@ -226,7 +226,27 @@ export async function handleStudyRequest(request,env,user,account,path,method){
     try{const u=new URL(meeting);if(!["https:","http:"].includes(u.protocol))throw Error();}catch{return fail("Enter a valid meeting URL.",400,request);}
     const [batch,teacher,assigned]=await Promise.all([env.DB.prepare("SELECT id,class_id,subject_id FROM batches WHERE id=? AND status='active'").bind(bid).first(),env.DB.prepare("SELECT id FROM users WHERE id=? AND role='teacher' AND status='approved' AND deleted_at IS NULL").bind(tid).first(),env.DB.prepare("SELECT 1 ok FROM batch_teachers WHERE batch_id=? AND teacher_id=?").bind(bid,tid).first()]);
     if(!batch||!teacher||!assigned)return fail("Choose an active batch and a teacher assigned to it.",400,request);
-    const id=crypto.randomUUID();await env.DB.prepare("INSERT INTO live_classes(id,title,description,batch_id,teacher_id,class_id,subject_id,meeting_provider,meeting_url,starts_at,ends_at,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,'scheduled')").bind(id,title,txt(b.description,2000)||null,bid,tid,batch.class_id,batch.subject_id,provider,meeting,new Date(start).toISOString(),new Date(end).toISOString()).run();return json({success:true,id},201,request);
+    const startsAt=new Date(start).toISOString(),endsAt=new Date(end).toISOString();
+    const [teacherConflict,batchConflict]=await Promise.all([
+      env.DB.prepare("SELECT id FROM live_classes WHERE teacher_id=? AND status IN ('scheduled','live') AND starts_at<? AND ends_at>? LIMIT 1").bind(tid,endsAt,startsAt).first(),
+      env.DB.prepare("SELECT id FROM live_classes WHERE batch_id=? AND status IN ('scheduled','live') AND starts_at<? AND ends_at>? LIMIT 1").bind(bid,endsAt,startsAt).first()
+    ]);
+    if(teacherConflict)return fail("Teacher scheduling conflict: this teacher already has another class during the selected time.",409,request);
+    if(batchConflict)return fail("Batch scheduling conflict: this batch already has another class during the selected time.",409,request);
+    const id=crypto.randomUUID();await env.DB.prepare("INSERT INTO live_classes(id,title,description,batch_id,teacher_id,class_id,subject_id,meeting_provider,meeting_url,starts_at,ends_at,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,'scheduled')").bind(id,title,txt(b.description,2000)||null,bid,tid,batch.class_id,batch.subject_id,provider,meeting,startsAt,endsAt).run();return json({success:true,id},201,request);
+  }
+  const liveAdminCancel=path.match(/^\/api\/admin\/live-classes\/([0-9a-f-]+)\/status$/i);
+  if(liveAdminCancel&&method==="PATCH"&&account.role==="admin"){
+    const b=await request.json().catch(()=>({}));
+    if(b.status!=="cancelled")return fail("Admin can only cancel a scheduled class from this action.",400,request);
+    const cls=await env.DB.prepare("SELECT id,title,status FROM live_classes WHERE id=?").bind(liveAdminCancel[1]).first();
+    if(!cls)return fail("Class not found.",404,request);
+    if(cls.status!=="scheduled")return fail("Only scheduled classes can be cancelled. Live or completed classes must be handled through their normal workflow.",409,request);
+    await env.DB.batch([
+      env.DB.prepare("UPDATE live_classes SET status='cancelled',updated_at=datetime('now') WHERE id=? AND status='scheduled'").bind(cls.id),
+      env.DB.prepare("INSERT INTO audit_logs(id,actor_id,action,entity_type,entity_id,details) VALUES(?,?,'live_class_cancelled','live_class',?,?)").bind(crypto.randomUUID(),user.id,cls.id,JSON.stringify({title:cls.title}))
+    ]);
+    return json({success:true,message:"Scheduled class cancelled."},200,request);
   }
   const liveAdminAttendance=path.match(/^\/api\/admin\/live-classes\/([0-9a-f-]+)\/attendance$/i);
   if(liveAdminAttendance&&method==="GET"&&account.role==="admin"){
