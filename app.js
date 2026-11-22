@@ -120,7 +120,7 @@ function showPendingApproval() {
 }
 
 function page(name) {
-  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students", "exam-monitoring", "live-classes", "fees", "enquiries", "system-health"];
+  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students", "exam-monitoring", "public-exams", "live-classes", "fees", "enquiries", "system-health"];
   for (const pageName of pages) {
     const section = $(`#${pageName}-page`);
     if (section) section.classList.toggle("hidden", pageName !== name);
@@ -1435,6 +1435,7 @@ async function loadAdminPage(name) {
     if (name==="students") await loadStudents();
     if (name==="teachers") await loadTeachers();
     if (name==="exam-monitoring") await loadExamMonitoring();
+    if (name==="public-exams") await loadPublicExams();
     if (name==="live-classes") await loadAdminLiveClasses();
     if (name==="fees") await loadAdminFees();
     if (name==="enquiries") await loadEnquiries();
