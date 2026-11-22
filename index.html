@@ -142,11 +142,14 @@
           <article class="stat-card"><div class="stat-icon gold-bg">▤</div><p>Examinations</p><strong id="exam-count">—</strong><small>Across all subjects</small></article>
           <article class="stat-card"><div class="stat-icon green">◷</div><p>Exam attempts</p><strong id="attempt-count">—</strong><small>Student attempts recorded</small></article>
         </div>
-        <div class="section-heading lower"><div><h2>Getting started</h2><p class="muted">Your next setup milestones</p></div></div>
+        <div class="section-heading lower"><div><h2>Setup & activity</h2><p class="muted">Live counts from your DhyanshEdu portal database</p></div></div>
         <div class="setup-grid">
-          <article class="setup-card"><span class="setup-number">01</span><div><h3>Teacher accounts</h3><p>Create teacher accounts and approve access.</p><span class="status-pill pending">Teacher management next</span></div></article>
-          <article class="setup-card"><span class="setup-number">02</span><div><h3>Question bank</h3><p>Build subject-wise questions for MCQ, numerical and descriptive exams.</p><span class="status-pill pending">Coming next</span></div></article>
-          <article class="setup-card"><span class="setup-number">03</span><div><h3>Student examinations</h3><p>Enable timed tests, submissions, evaluation and result reporting.</p><span class="status-pill pending">Coming next</span></div></article>
+          <article class="setup-card"><span class="setup-number" id="overview-teachers">—</span><div><h3>Teachers</h3><p><strong id="overview-teacher-approved">—</strong> approved · <strong id="overview-teacher-pending">—</strong> pending approval</p><button class="status-pill" type="button" data-page="teachers">Manage teachers →</button></div></article>
+          <article class="setup-card"><span class="setup-number" id="overview-classes">—</span><div><h3>Classes</h3><p>Active academic classes</p><button class="status-pill" type="button" data-page="classes">Manage classes →</button></div></article>
+          <article class="setup-card"><span class="setup-number" id="overview-subjects">—</span><div><h3>Subjects</h3><p>Active subjects configured</p><button class="status-pill" type="button" data-page="subjects">Manage subjects →</button></div></article>
+          <article class="setup-card"><span class="setup-number" id="overview-batches">—</span><div><h3>Batches</h3><p>Active learning batches</p><button class="status-pill" type="button" data-page="batches">Manage batches →</button></div></article>
+          <article class="setup-card"><span class="setup-number" id="overview-exams">—</span><div><h3>Examinations</h3><p><strong id="overview-attempts">—</strong> student attempts recorded</p><button class="status-pill" type="button" data-page="exam-monitoring">View examinations →</button></div></article>
+          <article class="setup-card"><span class="setup-number">↗</span><div><h3>System health</h3><p>Check Worker, D1, R2 and Supabase connectivity</p><button class="status-pill" type="button" data-page="system-health">Open health checks →</button></div></article>
         </div>
       </section>
       <section id="teachers-page" class="hidden">
