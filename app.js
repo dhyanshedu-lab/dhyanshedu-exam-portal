@@ -1329,7 +1329,7 @@ async function loadPublicExams(){
             const ends=prompt("Public exam closing date/time in your local time (optional)",x.ends_at||"");if(ends===null)return;
             payload={status:"published",public_slug:slug,max_attempts:Number(max),results_mode:mode,starts_at:starts?new Date(starts).toISOString():null,ends_at:ends?new Date(ends).toISOString():null};
           }
-          await api("/api/admin/public-exams/"+encodeURIComponent(x.exam_id),{method:"PUT",body:JSON.stringify(payload)});
+          await api("/api/admin/public-exams/"+encodeURIComponent(x.exam_id),{method:"PATCH",body:JSON.stringify(payload)});
           await loadPublicExams();
         }catch(e){alert(e.message);}
       });
