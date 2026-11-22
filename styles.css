@@ -131,3 +131,8 @@ textarea{resize:vertical;min-height:76px;line-height:1.5}
 #system-health-page td{white-space:normal;min-width:120px}
 #system-health-page td a{color:var(--gold,#9a742e);font-weight:600}
 @media(max-width:680px){.system-health-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.system-health-grid .stat-card{padding:14px}.system-health-grid .stat-card strong{font-size:20px}}
+
+
+/* Shared account controls for Admin, Teacher and Student workspaces */
+.topbar-actions{display:flex;align-items:center;gap:18px}.topbar-signout{margin:0;padding:10px 14px;border:1px solid var(--line);border-radius:9px;color:var(--navy);font-weight:700;white-space:nowrap}.topbar-signout:hover{background:#f4f6fa}.topbar-signout:disabled{opacity:.6;cursor:wait}
+@media(max-width:640px){.topbar{padding:0 16px}.topbar-actions{gap:8px}.topbar-signout{padding:8px 10px;font-size:12px}.user-chip{gap:7px}.user-chip>span:last-child{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
