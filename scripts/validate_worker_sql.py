@@ -12,7 +12,7 @@ for table in fixture:
     db.execute(table["sql"])
 
 # Apply additive migrations to model the schema expected by the current API modules.
-for migration_name in ("0003_fee_management.sql", "0004_exam_answer_feedback.sql"):
+for migration_name in ("0003_fee_management.sql", "0004_exam_answer_feedback.sql", "0006_teacher_leave_student_progress.sql"):
     db.executescript((ROOT / "migrations" / migration_name).read_text())
 
 # Seed the minimal parent rows needed for SQLite to compile INSERT/UPSERT statements.

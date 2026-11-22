@@ -646,6 +646,16 @@ function openStudentSubmission(a){
   const panel=$("#student-submission-panel");panel.classList.remove("hidden");panel.innerHTML="<div class='form-card'><h3>Submit · "+a.title+"</h3><p class='muted'>"+(a.instructions||"Upload your completed worksheet or enter your answer below.")+"</p><form id='student-assignment-submit' class='form-grid' data-assignment-id='"+a.id+"'><div class='full'><label for='student-assignment-answer'>Answer / comments</label><textarea id='student-assignment-answer' rows='4' maxlength='8000'></textarea></div><div class='full'><label for='student-assignment-file'>Completed work (PDF, image, TXT or DOCX; max 12 MB)</label><input id='student-assignment-file' type='file' accept='.pdf,.jpg,.jpeg,.png,.webp,.txt,.docx'></div><div><button class='btn btn-primary' type='submit'>Submit assignment</button></div></form><p id='student-assignment-message' class='message'></p><p class='muted'>Current status: "+(a.submission_status||"Not submitted")+(a.teacher_feedback?" · Teacher feedback: "+a.teacher_feedback:"")+"</p></div>";
 }
 
+async function loadTeacherLeaves(){
+  const body=$("#teacher-leave-list");if(!body)return;
+  try{const d=await api("/api/teacher/leaves");body.replaceChildren();(d.leaves||[]).forEach(x=>{const tr=body.insertRow();[x.start_date+" – "+x.end_date,x.leave_type,x.reason,x.status].forEach(v=>addCell(tr,v));const td=tr.insertCell();if(x.status==="pending"){const b=document.createElement("button");b.className="btn btn-secondary btn-small";b.textContent="Cancel";b.addEventListener("click",async()=>{try{await api("/api/teacher/leaves/"+x.id+"/cancel",{method:"POST"});await loadTeacherLeaves();}catch(e){alert(e.message);}});td.append(b);}else td.textContent=x.review_note||"—";});if(!body.children.length){const tr=body.insertRow();const td=tr.insertCell();td.colSpan=5;td.textContent="No leave requests yet.";}}catch(e){body.innerHTML="<tr><td colspan='5'>"+e.message+"</td></tr>";}
+}
+async function loadStudentClassProgress(){
+  const target=$("#student-class-progress"),badges=$("#student-achievement-badges");if(!target||!badges)return;
+  try{const d=await api("/api/student/class-progress");target.replaceChildren();(d.progress||[]).forEach(p=>{const card=document.createElement("div");card.className="form-card";const h=document.createElement("h4");h.textContent=p.batch_name+" · "+p.subject_name;const label=document.createElement("p");label.textContent=p.completed_classes+" / "+p.total_classes+" classes completed · "+p.completion_percent+"%";const bar=document.createElement("progress");bar.max=100;bar.value=p.completion_percent;bar.style.width="100%";card.append(h,label,bar);target.append(card);});if(!target.children.length)target.textContent="Your class progress will appear once the Admin sets your class entitlement.";
+  badges.replaceChildren();(d.badges||[]).forEach(b=>{const card=document.createElement("article");card.className="stat-card";const name=document.createElement("p");name.textContent=b.badge_emoji+" "+b.badge_name;const desc=document.createElement("small");desc.textContent=b.threshold_percent+"% milestone · "+b.description;card.append(name,desc);badges.append(card);});if(!badges.children.length){const p=document.createElement("p");p.className="muted";p.textContent="Your badges will appear as you complete class milestones.";badges.append(p);}
+  }catch(e){target.textContent=e.message;}
+}
 async function loadRoleWorkspace(role) {
   const section = roleWorkspaceSection();
   $("#role-workspace-heading").textContent = role === "teacher" ? "Teacher workspace" : "Student workspace";
@@ -686,6 +696,11 @@ async function loadRoleWorkspace(role) {
     const liveBody=$("#my-live-list");liveBody.replaceChildren();(live.live_classes||[]).forEach(item=>{const tr=liveBody.insertRow();[item.title,item.batch_name||item.batch_id||item.class_id,item.starts_at?new Date(item.starts_at).toLocaleString():"—",item.status].forEach(v=>{const td=tr.insertCell();td.textContent=v??"—";});const meeting=tr.insertCell();meeting.append(safeMeetingLink(item.meeting_url));const actions=tr.insertCell();if(role==="teacher"){const attendance=document.createElement("button");attendance.className="btn btn-secondary btn-small";attendance.textContent="Mark attendance";attendance.addEventListener("click",()=>openTeacherAttendance(item.id,item.title));actions.append(attendance);const status=document.createElement("select");status.className="status-select";status.style.marginLeft="5px";[["scheduled","Scheduled"],["live","Live"],["completed","Completed"],["cancelled","Cancelled"]].forEach(([v,l])=>{const o=document.createElement("option");o.value=v;o.textContent=l;status.append(o);});status.value=item.status;status.addEventListener("change",async()=>{try{await api("/api/teacher/live-classes/"+encodeURIComponent(item.id)+"/status",{method:"PATCH",body:JSON.stringify({status:status.value})});await loadRoleWorkspace("teacher");}catch(e){alert(e.message);status.value=item.status;}});actions.append(status);}else actions.textContent=item.teacher_name||"—";});if(!liveBody.children.length){const tr=liveBody.insertRow(),td=tr.insertCell();td.colSpan=6;td.textContent="No scheduled classes available."; }
 
     if (role === "teacher") {
+      const leavePanel=document.createElement("div");
+      leavePanel.className="form-card";
+      leavePanel.innerHTML="<h3>Apply for leave</h3><form id='teacher-leave-form' class='form-grid'><div><label for='leave-type'>Leave type</label><select id='leave-type'><option value='personal'>Personal</option><option value='sick'>Sick</option><option value='emergency'>Emergency</option><option value='other'>Other</option></select></div><div><label for='leave-start'>Start date</label><input id='leave-start' type='date' required></div><div><label for='leave-end'>End date</label><input id='leave-end' type='date' required></div><div class='full'><label for='leave-reason'>Reason</label><textarea id='leave-reason' rows='2' maxlength='1000' required></textarea></div><div><button class='btn btn-primary' type='submit'>Submit leave request</button></div></form><p id='teacher-leave-message' class='message'></p><h3>My leave requests</h3><div class='table-scroll'><table><thead><tr><th>Dates</th><th>Type</th><th>Reason</th><th>Status</th><th>Action</th></tr></thead><tbody id='teacher-leave-list'><tr><td colspan='5'>Loading…</td></tr></tbody></table></div>";
+      section.append(leavePanel);
+      await loadTeacherLeaves();
       teacherWorkspaceBatches = batches.batches || [];
       populateTeacherBatchSelects();
       const importBatch=$("#question-import-batch");if(importBatch){importBatch.replaceChildren();const first=document.createElement("option");first.value="";first.textContent="Select batch";importBatch.append(first);teacherWorkspaceBatches.forEach(b=>{const o=document.createElement("option");o.value=b.id;o.textContent=b.batch_name+" — "+(b.subject_name||"Subject");importBatch.append(o);});}
@@ -698,6 +713,11 @@ async function loadRoleWorkspace(role) {
       await loadTeacherEvaluations();
       await loadLearningTasks("teacher");
     } else if (role === "student") {
+      const progressPanel=document.createElement("div");
+      progressPanel.className="table-card";
+      progressPanel.innerHTML="<div class='table-heading'><h3>My class progress</h3><p class='muted'>Completed lessons count when your attendance is Present or Late.</p></div><div id='student-class-progress'><p class='muted'>Loading progress…</p></div><div class='table-heading'><h3>Achievement badges</h3></div><div id='student-achievement-badges' class='stats-grid'></div>";
+      section.append(progressPanel);
+      await loadStudentClassProgress();
       await loadStudentExams();
       await loadLearningTasks("student");
       await loadStudentFees();
@@ -1109,7 +1129,7 @@ async function loadAssignments() {
 }
 async function loadStudents() {
   const body=$("#student-list"); body.replaceChildren();
-  const {students}=await api("/api/students"); adminCache.students=students;
+  const [{students},{batches}]=await Promise.all([api("/api/students"),api("/api/batches")]); adminCache.students=students;adminCache.batches=batches;
   students.forEach(item=>{
     const row=body.insertRow(); addCell(row,item.full_name); addCell(row,item.email);
     const status=row.insertCell(); status.append(statusTag(item.status));
@@ -1118,6 +1138,41 @@ async function loadStudents() {
     );
   });
   if (!students.length) { const row=body.insertRow(); const td=addCell(row,"No students invited yet."); td.colSpan=4; }
+  fillSelect($("#entitlement-student"),students.filter(x=>x.status==="approved"),x=>x.full_name,"Select student");
+  fillSelect($("#entitlement-batch"),batches.filter(x=>x.status==="active"),x=>x.batch_name+" · "+x.subject_name,"Select batch");
+  await loadAdminTeacherLeaves();
+}
+async function loadAdminTeacherLeaves(){
+  const body=$("#admin-teacher-leaves");if(!body)return;
+  try{
+    const [{leaves},{teachers}]=await Promise.all([api("/api/admin/teacher-leaves"),api("/api/teachers")]);
+    const approved=teachers.filter(t=>t.status==="approved");
+    body.replaceChildren();
+    for(const leave of leaves){
+      const tr=body.insertRow();addCell(tr,leave.teacher_name);addCell(tr,leave.start_date+" – "+leave.end_date);addCell(tr,leave.reason);
+      const st=tr.insertCell();st.append(statusTag(leave.status));
+      const actions=tr.insertCell();
+      if(leave.status!=="pending"){actions.textContent=leave.review_note||"—";continue;}
+      const coverage=[];
+      (leave.coverage_scopes||[]).forEach(scope=>{
+        const wrap=document.createElement("div"),label=document.createElement("label"),select=document.createElement("select");
+        label.textContent="Backup for "+scope.label;select.required=true;
+        const empty=document.createElement("option");empty.value="";empty.textContent="Select approved substitute";select.append(empty);
+        approved.filter(t=>t.id!==leave.teacher_id).forEach(t=>{const o=document.createElement("option");o.value=t.id;o.textContent=t.full_name;select.append(o);});
+        wrap.append(label,select);actions.append(wrap);coverage.push({scope,select});
+      });
+      const approve=document.createElement("button");approve.className="btn btn-primary btn-small";approve.textContent="Approve";
+      approve.addEventListener("click",async()=>{
+        if(coverage.some(x=>!x.select.value)){alert("Select an approved substitute for every affected teaching assignment.");return;}
+        const payload=coverage.map(x=>({scope_type:x.scope.scope_type,batch_id:x.scope.batch_id,class_id:x.scope.class_id,subject_id:x.scope.subject_id,substitute_teacher_id:x.select.value}));
+        try{await api("/api/admin/teacher-leaves/"+leave.id+"/review",{method:"POST",body:JSON.stringify({decision:"approved",coverage:payload})});await loadAdminTeacherLeaves();}catch(e){alert(e.message);}
+      });
+      const reject=document.createElement("button");reject.className="btn btn-danger btn-small";reject.textContent="Reject";reject.style.marginLeft="6px";
+      reject.addEventListener("click",async()=>{const note=prompt("Optional review note")||"";try{await api("/api/admin/teacher-leaves/"+leave.id+"/review",{method:"POST",body:JSON.stringify({decision:"rejected",review_note:note})});await loadAdminTeacherLeaves();}catch(e){alert(e.message);}});
+      actions.append(approve,reject);
+    }
+    if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=5;td.textContent="No teacher leave requests."; }
+  }catch(e){body.innerHTML="<tr><td colspan='5'>"+e.message+"</td></tr>";}
 }
 let examMonitoringRows = [];
 
@@ -1693,6 +1748,17 @@ document.addEventListener("submit",async e=>{
 
 
 document.addEventListener("submit",async e=>{
+  if(e.target.id==="student-entitlement-form"){
+    e.preventDefault();const f=e.target,msg=$("#entitlement-message"),btn=f.querySelector("button[type=submit]");btn.disabled=true;
+    const batch=adminCache.batches.find(x=>x.id===$("#entitlement-batch").value);
+    try{if(!batch)throw new Error("Select an active batch.");await api("/api/admin/student-entitlements",{method:"POST",body:JSON.stringify({student_id:$("#entitlement-student").value,batch_id:batch.id,subject_id:batch.subject_id,total_classes:Number($("#entitlement-total").value)})});msg.textContent="Class entitlement saved. Student progress will update automatically.";f.reset();}
+    catch(err){msg.textContent=err.message;}finally{btn.disabled=false;}
+  }
+  if(e.target.id==="teacher-leave-form"){
+    e.preventDefault();const f=e.target,msg=$("#teacher-leave-message"),btn=f.querySelector("button[type=submit]");btn.disabled=true;msg.textContent="Submitting request…";
+    try{await api("/api/teacher/leaves",{method:"POST",body:JSON.stringify({leave_type:$("#leave-type").value,start_date:$("#leave-start").value,end_date:$("#leave-end").value,reason:$("#leave-reason").value.trim()})});f.reset();msg.textContent="Leave request submitted to Admin.";await loadTeacherLeaves();}
+    catch(err){msg.textContent=err.message;}finally{btn.disabled=false;}
+  }
   if(e.target.id==="fee-plan-form"){
     e.preventDefault();const f=e.target,msg=$("#fee-plan-message");msg.textContent="Saving draft…";
     try{await api("/api/admin/fee-plans",{method:"POST",body:JSON.stringify({name:$("#fee-plan-name").value.trim(),amount_paise:Math.round(Number($("#fee-plan-amount").value)*100),billing_frequency:$("#fee-plan-frequency").value,pricing_scope:$("#fee-plan-scope").value,batch_type:$("#fee-plan-batch-type").value||null,curriculum_id:$("#fee-plan-curriculum").value||null,class_id:$("#fee-plan-class").value||null,subject_id:$("#fee-plan-subject").value||null,batch_id:$("#fee-plan-batch").value||null,effective_from:$("#fee-plan-effective-from").value||null,effective_to:$("#fee-plan-effective-to").value||null,description:$("#fee-plan-description").value,inclusions:$("#fee-plan-inclusions").value,terms:$("#fee-plan-terms").value})});f.reset();msg.textContent="Fee plan saved as draft. Publish it when ready.";await loadAdminFees();}catch(err){msg.textContent=err.message;}
@@ -1711,3 +1777,4 @@ document.addEventListener("change",e=>{
   if(["fee-account-original","fee-account-discount","fee-account-scholarship"].includes(e.target.id)){const o=Number($("#fee-account-original").value||0),d=Number($("#fee-account-discount").value||0),s=Number($("#fee-account-scholarship").value||0);$("#fee-account-total").value=Math.max(0,o-d-s).toFixed(2);}
 });
 document.addEventListener("click",e=>{if(e.target.id==="refresh-fees")loadAdminFees();});
+document.addEventListener("click",e=>{if(e.target.id==="refresh-teacher-leaves")loadAdminTeacherLeaves();});

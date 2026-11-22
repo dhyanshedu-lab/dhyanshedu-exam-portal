@@ -142,5 +142,29 @@
   {
     "name": "exam_attachments",
     "sql": "CREATE TABLE exam_attachments (id TEXT PRIMARY KEY, exam_id TEXT NOT NULL REFERENCES exams(id), uploaded_by TEXT NOT NULL REFERENCES users(id), r2_object_key TEXT NOT NULL, file_name TEXT NOT NULL, mime_type TEXT NOT NULL, file_size_bytes INTEGER NOT NULL CHECK (file_size_bytes > 0 AND file_size_bytes <= 12582912), created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+  },
+  {
+    "name": "teacher_leaves",
+    "sql": "CREATE TABLE teacher_leaves (id TEXT PRIMARY KEY, teacher_id TEXT NOT NULL REFERENCES users(id), leave_type TEXT NOT NULL DEFAULT 'personal' CHECK (leave_type IN ('sick','personal','emergency','other')), start_date TEXT NOT NULL, end_date TEXT NOT NULL, reason TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','cancelled')), reviewed_by TEXT REFERENCES users(id), reviewed_at TEXT, review_note TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), CHECK (end_date >= start_date))"
+  },
+  {
+    "name": "teacher_coverage_assignments",
+    "sql": "CREATE TABLE teacher_coverage_assignments (id TEXT PRIMARY KEY, leave_id TEXT NOT NULL REFERENCES teacher_leaves(id), scope_type TEXT NOT NULL CHECK (scope_type IN ('batch','class_subject')), batch_id TEXT REFERENCES batches(id), class_id INTEGER REFERENCES classes(id), subject_id INTEGER REFERENCES subjects(id), primary_teacher_id TEXT NOT NULL REFERENCES users(id), substitute_teacher_id TEXT NOT NULL REFERENCES users(id), effective_from TEXT NOT NULL, effective_to TEXT NOT NULL, reason TEXT, status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','cancelled','completed')), created_by TEXT NOT NULL REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (datetime('now')), CHECK (effective_to >= effective_from), CHECK ((scope_type='batch' AND batch_id IS NOT NULL AND class_id IS NULL AND subject_id IS NULL) OR (scope_type='class_subject' AND batch_id IS NULL AND class_id IS NOT NULL AND subject_id IS NOT NULL)), CHECK (primary_teacher_id <> substitute_teacher_id))"
+  },
+  {
+    "name": "student_class_entitlements",
+    "sql": "CREATE TABLE student_class_entitlements (id TEXT PRIMARY KEY, student_id TEXT NOT NULL REFERENCES users(id), batch_id TEXT NOT NULL REFERENCES batches(id), subject_id INTEGER NOT NULL REFERENCES subjects(id), total_classes INTEGER NOT NULL CHECK (total_classes > 0), status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive')), created_by TEXT NOT NULL REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(student_id,batch_id,subject_id))"
+  },
+  {
+    "name": "student_badge_definitions",
+    "sql": "CREATE TABLE student_badge_definitions (badge_code TEXT PRIMARY KEY, badge_name TEXT NOT NULL, description TEXT NOT NULL, threshold_percent INTEGER NOT NULL UNIQUE CHECK (threshold_percent IN (25,50,75,100)), badge_emoji TEXT NOT NULL, sort_order INTEGER NOT NULL)"
+  },
+  {
+    "name": "student_badges",
+    "sql": "CREATE TABLE student_badges (id TEXT PRIMARY KEY, student_id TEXT NOT NULL REFERENCES users(id), batch_id TEXT NOT NULL REFERENCES batches(id), subject_id INTEGER NOT NULL REFERENCES subjects(id), badge_code TEXT NOT NULL REFERENCES student_badge_definitions(badge_code), earned_percent INTEGER NOT NULL, earned_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(student_id,batch_id,subject_id,badge_code))"
+  },
+  {
+    "name": "student_class_progress",
+    "sql": "CREATE VIEW student_class_progress AS SELECT e.student_id,e.batch_id,e.subject_id,e.total_classes,COUNT(DISTINCT CASE WHEN lc.status='completed' AND lca.attendance_status IN ('present','late') THEN lc.id END) completed_classes,MIN(100,CAST(COUNT(DISTINCT CASE WHEN lc.status='completed' AND lca.attendance_status IN ('present','late') THEN lc.id END)*100.0/e.total_classes AS INTEGER)) completion_percent FROM student_class_entitlements e LEFT JOIN live_classes lc ON lc.batch_id=e.batch_id AND (lc.subject_id=e.subject_id OR lc.subject_id IS NULL) AND lc.status='completed' LEFT JOIN live_class_attendance lca ON lca.live_class_id=lc.id AND lca.student_id=e.student_id WHERE e.status='active' GROUP BY e.student_id,e.batch_id,e.subject_id,e.total_classes"
   }
 ]
