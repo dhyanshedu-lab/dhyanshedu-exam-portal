@@ -22,6 +22,92 @@ async function download(env,request,row){
 }
 export async function handleStudyRequest(request,env,user,account,path,method){
   const teacher=account.role==="teacher",student=account.role==="student";
+
+  const admin=account.role==="admin";
+  // Teacher leave applications and admin decisions.
+  if(path==="/api/teacher/leaves"&&teacher&&method==="GET"){
+    const r=await env.DB.prepare("SELECT id,leave_type,start_date,end_date,reason,status,review_note,created_at,reviewed_at FROM teacher_leaves WHERE teacher_id=? ORDER BY created_at DESC LIMIT 100").bind(user.id).all();
+    return json({success:true,leaves:r.results||[]},200,request);
+  }
+  if(path==="/api/teacher/leaves"&&teacher&&method==="POST"){
+    const b=await request.json().catch(()=>({})),start=txt(b.start_date,10),end=txt(b.end_date,10),reason=txt(b.reason,1000),type=txt(b.leave_type,20)||"personal";
+    if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(start)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(end)||end<start||!reason||!["sick","personal","emergency","other"].includes(type))return fail("Enter a valid leave type, date range and reason.",400,request);
+    const overlap=await env.DB.prepare("SELECT id FROM teacher_leaves WHERE teacher_id=? AND status IN ('pending','approved') AND start_date<=? AND end_date>=?").bind(user.id,end,start).first();
+    if(overlap)return fail("You already have a pending or approved leave overlapping these dates.",409,request);
+    const id=crypto.randomUUID();await env.DB.prepare("INSERT INTO teacher_leaves(id,teacher_id,leave_type,start_date,end_date,reason) VALUES(?,?,?,?,?,?)").bind(id,user.id,type,start,end,reason).run();
+    const admins=await env.DB.prepare("SELECT id FROM users WHERE role='admin' AND status='approved' AND deleted_at IS NULL").all();
+    for(const a of admins.results||[])await env.DB.prepare("INSERT INTO notifications(id,user_id,title,message,notification_type) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),a.id,"Teacher leave request","A teacher has submitted a leave request for "+start+" to "+end+".","teacher_leave").run();
+    return json({success:true,id},201,request);
+  }
+  const cancelLeave=path.match(/^\\/api\\/teacher\\/leaves\\/([0-9a-f-]+)\\/cancel$/i);
+  if(cancelLeave&&teacher&&method==="POST"){
+    const r=await env.DB.prepare("UPDATE teacher_leaves SET status='cancelled',updated_at=datetime('now') WHERE id=? AND teacher_id=? AND status='pending'").bind(cancelLeave[1],user.id).run();
+    if(!r.meta?.changes)return fail("Only pending leave requests can be cancelled.",409,request);
+    return json({success:true},200,request);
+  }
+  if(path==="/api/admin/teacher-leaves"&&admin&&method==="GET"){
+    const r=await env.DB.prepare("SELECT l.*,u.full_name teacher_name,u.email teacher_email FROM teacher_leaves l JOIN users u ON u.id=l.teacher_id ORDER BY CASE l.status WHEN 'pending' THEN 0 ELSE 1 END,l.start_date DESC LIMIT 300").all();
+    return json({success:true,leaves:r.results||[]},200,request);
+  }
+  const reviewLeave=path.match(/^\\/api\\/admin\\/teacher-leaves\\/([0-9a-f-]+)\\/review$/i);
+  if(reviewLeave&&admin&&method==="POST"){
+    const b=await request.json().catch(()=>({})),decision=txt(b.decision,20),note=txt(b.review_note,1000)||null;
+    if(!["approved","rejected"].includes(decision))return fail("Choose approve or reject.",400,request);
+    const leave=await env.DB.prepare("SELECT * FROM teacher_leaves WHERE id=? AND status='pending'").bind(reviewLeave[1]).first();
+    if(!leave)return fail("Pending leave request not found.",404,request);
+    const coverage=Array.isArray(b.coverage)?b.coverage:[];
+    if(decision==="approved"){
+      if(!coverage.length)return fail("Add a substitute for each affected batch or class assignment before approving leave.",400,request);
+      for(const c of coverage){
+        const scope=txt(c.scope_type,20),sub=txt(c.substitute_teacher_id,80);
+        if(!["batch","class_subject"].includes(scope)||!sub||sub===leave.teacher_id)return fail("Invalid substitute coverage details.",400,request);
+        const teacherRow=await env.DB.prepare("SELECT id FROM users WHERE id=? AND role='teacher' AND status='approved' AND deleted_at IS NULL").bind(sub).first();
+        if(!teacherRow)return fail("Every substitute must be an approved active teacher.",400,request);
+        if(scope==="batch"){
+          const bid=txt(c.batch_id,80);
+          const primary=await env.DB.prepare("SELECT b.id,b.class_id,b.subject_id FROM batches b JOIN batch_teachers bt ON bt.batch_id=b.id WHERE b.id=? AND bt.teacher_id=? AND b.status='active'").bind(bid,leave.teacher_id).first();
+          const qualified=await env.DB.prepare("SELECT 1 FROM teacher_assignments WHERE teacher_id=? AND class_id=? AND subject_id=?").bind(sub,primary?.class_id,primary?.subject_id).first();
+          if(!primary||!qualified)return fail("Substitute must be assigned to the batch's class and subject.",400,request);
+          c._batch=primary;
+        }else{
+          const classId=Number(c.class_id),subjectId=Number(c.subject_id);
+          const primary=await env.DB.prepare("SELECT id FROM teacher_assignments WHERE teacher_id=? AND class_id=? AND subject_id=?").bind(leave.teacher_id,classId,subjectId).first();
+          const qualified=await env.DB.prepare("SELECT 1 FROM teacher_assignments WHERE teacher_id=? AND class_id=? AND subject_id=?").bind(sub,classId,subjectId).first();
+          if(!primary||!qualified)return fail("Both primary and substitute must be assigned to this class and subject.",400,request);
+        }
+      }
+      const overlap=await env.DB.prepare("SELECT id FROM teacher_leaves WHERE teacher_id=? AND id<>? AND status='approved' AND start_date<=? AND end_date>=?").bind(leave.teacher_id,leave.id,leave.end_date,leave.start_date).first();
+      if(overlap)return fail("This leave overlaps another approved leave.",409,request);
+    }
+    const statements=[env.DB.prepare("UPDATE teacher_leaves SET status=?,reviewed_by=?,reviewed_at=datetime('now'),review_note=?,updated_at=datetime('now') WHERE id=? AND status='pending'").bind(decision,user.id,note,leave.id)];
+    if(decision==="approved")for(const c of coverage){
+      const scope=txt(c.scope_type,20),bid=scope==="batch"?txt(c.batch_id,80):null,cid=scope==="class_subject"?Number(c.class_id):null,sid=scope==="class_subject"?Number(c.subject_id):null;
+      statements.push(env.DB.prepare("INSERT INTO teacher_coverage_assignments(id,leave_id,scope_type,batch_id,class_id,subject_id,primary_teacher_id,substitute_teacher_id,effective_from,effective_to,reason,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").bind(crypto.randomUUID(),leave.id,scope,bid,cid,sid,leave.teacher_id,txt(c.substitute_teacher_id,80),leave.start_date,leave.end_date,note,user.id));
+    }
+    statements.push(env.DB.prepare("INSERT INTO notifications(id,user_id,title,message,notification_type) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),leave.teacher_id,"Leave request "+decision,"Your leave request from "+leave.start_date+" to "+leave.end_date+" was "+decision+".","teacher_leave"));
+    statements.push(env.DB.prepare("INSERT INTO audit_logs(id,actor_id,action,entity_type,entity_id,details) VALUES(?,?,?,?,?,?)").bind(crypto.randomUUID(),user.id,"teacher_leave_"+decision,"teacher_leave",leave.id,JSON.stringify({coverage_count:decision==="approved"?coverage.length:0,review_note:note})));
+    await env.DB.batch(statements);return json({success:true,status:decision},200,request);
+  }
+  if(path==="/api/admin/student-entitlements"&&admin&&method==="GET"){
+    const r=await env.DB.prepare("SELECT e.id,e.student_id,u.full_name student_name,e.batch_id,b.batch_name,e.subject_id,s.subject_name,e.total_classes,e.status FROM student_class_entitlements e JOIN users u ON u.id=e.student_id JOIN batches b ON b.id=e.batch_id JOIN subjects s ON s.id=e.subject_id ORDER BY u.full_name,b.batch_name").all();
+    return json({success:true,entitlements:r.results||[]},200,request);
+  }
+  if(path==="/api/admin/student-entitlements"&&admin&&method==="POST"){
+    const b=await request.json().catch(()=>({})),sid=txt(b.student_id,80),bid=txt(b.batch_id,80),subject=Number(b.subject_id),total=Number(b.total_classes);
+    if(!Number.isInteger(total)||total<1||total>10000)return fail("Total classes must be between 1 and 10,000.",400,request);
+    const enrolled=await env.DB.prepare("SELECT bs.id FROM batch_students bs JOIN batches b ON b.id=bs.batch_id WHERE bs.student_id=? AND bs.batch_id=? AND bs.status='active' AND b.status='active'").bind(sid,bid).first();
+    const batch=await env.DB.prepare("SELECT id,subject_id FROM batches WHERE id=? AND status='active'").bind(bid).first();
+    if(!enrolled||!batch||Number(batch.subject_id)!==subject)return fail("Choose a student actively enrolled in the selected batch and its subject.",400,request);
+    const old=await env.DB.prepare("SELECT id FROM student_class_entitlements WHERE student_id=? AND batch_id=? AND subject_id=?").bind(sid,bid,subject).first(),id=old?.id||crypto.randomUUID();
+    await env.DB.prepare("INSERT INTO student_class_entitlements(id,student_id,batch_id,subject_id,total_classes,created_by) VALUES(?,?,?,?,?,?) ON CONFLICT(student_id,batch_id,subject_id) DO UPDATE SET total_classes=excluded.total_classes,status='active',updated_at=datetime('now')").bind(id,sid,bid,subject,total,user.id).run();
+    return json({success:true,id},200,request);
+  }
+  if(path==="/api/student/class-progress"&&student&&method==="GET"){
+    const r=await env.DB.prepare("SELECT p.*,b.batch_name,s.subject_name FROM student_class_progress p JOIN batches b ON b.id=p.batch_id JOIN subjects s ON s.id=p.subject_id WHERE p.student_id=? ORDER BY b.batch_name").bind(user.id).all();
+    for(const p of r.results||[])await env.DB.prepare("INSERT OR IGNORE INTO student_badges(id,student_id,batch_id,subject_id,badge_code,earned_percent) SELECT ?,?,?,?,d.badge_code,d.threshold_percent FROM student_badge_definitions d WHERE d.threshold_percent<=?").bind(crypto.randomUUID(),user.id,p.batch_id,p.subject_id,p.completion_percent).run();
+    const badges=await env.DB.prepare("SELECT sb.batch_id,sb.subject_id,d.badge_code,d.badge_name,d.description,d.threshold_percent,d.badge_emoji,sb.earned_at FROM student_badges sb JOIN student_badge_definitions d ON d.badge_code=sb.badge_code WHERE sb.student_id=? ORDER BY sb.earned_at,d.sort_order").bind(user.id).all();
+    return json({success:true,progress:r.results||[],badges:badges.results||[]},200,request);
+  }
   const materialDownload=path.match(/^\/api\/materials\/([0-9a-f-]+)\/download$/i);
   if(materialDownload&&method==="GET"){
     const row=teacher
