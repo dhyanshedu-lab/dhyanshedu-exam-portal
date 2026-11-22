@@ -39,7 +39,7 @@ export async function handleStudyRequest(request,env,user,account,path,method){
     for(const a of admins.results||[])await env.DB.prepare("INSERT INTO notifications(id,user_id,title,message,notification_type) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),a.id,"Teacher leave request","A teacher has submitted a leave request for "+start+" to "+end+".","teacher_leave").run();
     return json({success:true,id},201,request);
   }
-  const cancelLeave=path.match(/^\\/api\\/teacher\\/leaves\\/([0-9a-f-]+)\\/cancel$/i);
+  const cancelLeave=path.match(/^\/api\/teacher\/leaves\/([0-9a-f-]+)\/cancel$/i);
   if(cancelLeave&&teacher&&method==="POST"){
     const r=await env.DB.prepare("UPDATE teacher_leaves SET status='cancelled',updated_at=datetime('now') WHERE id=? AND teacher_id=? AND status='pending'").bind(cancelLeave[1],user.id).run();
     if(!r.meta?.changes)return fail("Only pending leave requests can be cancelled.",409,request);
@@ -60,7 +60,7 @@ export async function handleStudyRequest(request,env,user,account,path,method){
     }
     return json({success:true,leaves},200,request);
   }
-  const reviewLeave=path.match(/^\\/api\\/admin\\/teacher-leaves\\/([0-9a-f-]+)\\/review$/i);
+  const reviewLeave=path.match(/^\/api\/admin\/teacher-leaves\/([0-9a-f-]+)\/review$/i);
   if(reviewLeave&&admin&&method==="POST"){
     const b=await request.json().catch(()=>({})),decision=txt(b.decision,20),note=txt(b.review_note,1000)||null;
     if(!["approved","rejected"].includes(decision))return fail("Choose approve or reject.",400,request);
