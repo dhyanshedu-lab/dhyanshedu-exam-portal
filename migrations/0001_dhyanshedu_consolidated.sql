@@ -788,8 +788,6 @@ CREATE INDEX IF NOT EXISTS idx_public_assessment_attempts_expiry
     ON public_assessment_attempts(status, expires_at);
 CREATE INDEX IF NOT EXISTS idx_public_assessment_rate_limits_window
     ON public_assessment_rate_limits(window_start);
-CREATE INDEX IF NOT EXISTS idx_public_assessment_answers_attempt
-    ON public_assessment_answers(public_attempt_id);
 CREATE INDEX IF NOT EXISTS idx_answer_sheets_student_status
     ON answer_sheet_submissions(student_id, status);
 CREATE INDEX IF NOT EXISTS idx_answer_sheets_evaluator
