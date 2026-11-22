@@ -42,6 +42,14 @@ jobs:
           missing = expected - actual
           if missing:
               raise SystemExit("Missing public exam tables: " + ", ".join(sorted(missing)))
+          db.execute("INSERT INTO exams(id) VALUES('exam-1')")
+          db.execute("INSERT INTO exam_questions(id, exam_id) VALUES('question-1', 'exam-1')")
+          db.execute("INSERT INTO public_assessment_registrations(id,student_name,parent_name,phone,email,class_label,privacy_notice_version,privacy_consent_at,marketing_consent,identity_key) VALUES(?,?,?,?,?,?,'2026-11-v1',?,?,?)",
+                     ("reg-1", "Test Student", None, "9999999999", None, "Class 10", "2026-11-22T00:00:00Z", 0, "identity-hash"))
+          db.execute("INSERT INTO public_assessment_attempts(id,registration_id,exam_id,attempt_number,access_token_hash,started_at,expires_at,status) VALUES(?,?,?,?,?,?,?,'in_progress')",
+                     ("attempt-1", "reg-1", "exam-1", 1, "token-hash", "2026-11-22T00:00:00Z", "2026-11-22T01:00:00Z"))
+          db.execute("INSERT INTO public_assessment_answers(id,public_attempt_id,exam_question_id,selected_option_ids) VALUES(?,?,?,?)",
+                     ("answer-1", "attempt-1", "question-1", "[]"))
           violations = list(db.execute("PRAGMA foreign_key_check"))
           if violations:
               raise SystemExit("Foreign key validation failed: " + repr(violations))
