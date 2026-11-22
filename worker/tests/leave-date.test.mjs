@@ -39,6 +39,7 @@ test("requires coverage for every assigned class and batch", () => {
   ] }), false);
   assert.equal(isCoverageComplete({ batches, classes, coverage: [
     { scope_type: "class_subject", class_id: 7, subject_id: 2 },
+    { scope_type: "class_subject", class_id: 8, subject_id: 3 },
     { scope_type: "batch", batch_id: "batch-c" }
   ] }), true);
   assert.equal(isCoverageComplete({ batches, classes: [], coverage: [
