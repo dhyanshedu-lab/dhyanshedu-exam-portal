@@ -1,21 +1,33 @@
-# Cloudflare Worker source audit and QA candidate
+# DhyanshEdu Worker source audit and deployment record
 
-This branch captures the three modules returned by Cloudflare's Worker content endpoint for `dhyanshedu-api` on 2026-11-22. At capture time, Worker version 26 was serving 100% of traffic.
+This branch captures the Cloudflare Worker modules for `dhyanshedu-api` and records the production release.
 
-## Changes in this isolated branch
-- Replaced the double-escaped leave date pattern with strict ISO calendar-date validation. Impossible dates such as 2026-02-29 and 2026-11-31 are rejected.
-- Added a shared substitute-coverage SQL predicate and applied it to teacher workspace batch, assignment, material, live-class, exam, evaluation, grading, publishing and attachment access.
-- Applied explicit precedence: active batch-level coverage overrides class/subject coverage for that batch.
-- Preserved the primary teacher's original batch assignment validation during leave approval.
+## Source reconciliation
+- Compared the QA branch modules against the active Cloudflare Worker source before release.
+- `fees.js` matched the active source exactly.
+- Reconciled the intended fixes in `index.js` and `study.js`: the `/api/me` D1 binding mismatch and India Standard Time date-boundary handling.
+- Preserved the existing D1, R2 and Supabase bindings through strict inheritance; no credentials or binding values were changed.
+
+## Changes included in Worker version 28
+- Strict ISO calendar-date validation rejects malformed and impossible dates.
+- Shared substitute-coverage access with batch-level precedence over class/subject coverage.
+- Substitute teachers can view the primary teacher's question bank only while an active matching coverage assignment applies; exam creation revalidates question ownership against the selected batch and coverage scope.
+- Leave approval now requires complete coverage of every active batch assignment and every class/subject assignment. Duplicate and malformed scopes are rejected.
+- Teacher workspace, study materials, assignments, exams, evaluation, grading, publishing, attachments and live-class access honor substitute coverage.
+- India-local date comparisons use the explicit UTC+05:30 offset.
 
 ## Validation completed
-- 11 leave-date assertions passed locally.
-- D1 QA query confirmed batch coverage wins over overlapping class/subject coverage; the class-level substitute is denied when a batch override exists and regains access when that override is inactive.
-- Cloudflare accepted the patched modules as Worker version 27, confirming source compilation and binding inheritance.
+- Worker version upload and Cloudflare compilation succeeded.
+- All six existing bindings were verified on the candidate version.
+- Read-only D1 checks accepted the revised question-bank queries and assignment-scope lookups; no database rows were changed.
+- Seven focused coverage-completeness assertions passed in an isolated runtime harness.
+- Regression tests for coverage completeness were added to the Worker QA test suite. Authenticated end-to-end testing has not been performed.
 
-## Not deployed
-Version 27 is uploaded as a non-deployed candidate only. The active production deployment remains version 26 at 100%. No production login configuration or existing records were changed by this source patch.
+## Production deployment
+- Worker version 28 was deployed to `dhyanshedu-api` at 100% traffic on 2026-11-22 07:21:51 UTC.
+- Previous production version 26 remains available for rollback.
+- No D1 migration, production login configuration change, or production data write was performed as part of this deployment.
 
-## Remaining validation
-- Authenticated end-to-end tests through a protected preview URL are still outstanding. Preview URLs are disabled for the API Worker, and this branch has not enabled a public preview.
-- Review the remaining teacher question-bank ownership model and leave-approval completeness before promoting the candidate.
+## Deferred
+- Admin, teacher and student authenticated end-to-end tests are deferred until the user is ready.
+- Do not treat syntax, SQL parsing or the isolated helper assertions as a substitute for those end-to-end tests.
