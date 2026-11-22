@@ -118,6 +118,7 @@
       <a class="nav-item" data-page="assignments" data-admin-only href="#assignments"><span>⇄</span> Teacher assignments</a>
       <a class="nav-item" data-page="students" data-admin-only href="#students"><span>♧</span> Students</a>
       <a class="nav-item" data-page="exam-monitoring" data-admin-only href="#exam-monitoring"><span>▥</span> Exam monitoring</a>
+      <a class="nav-item" data-page="public-exams" data-admin-only href="#public-exams"><span>★</span> Free public exams</a>
       <a class="nav-item" data-page="live-classes" data-admin-only href="#live-classes"><span>◷</span> Live classes</a>
       <a class="nav-item" data-page="fees" data-admin-only href="#fees"><span>₹</span> Fee management</a>
       <a class="nav-item" data-page="enquiries" data-admin-only href="#enquiries"><span>✉</span> Website enquiries</a>
@@ -299,6 +300,13 @@
           <div class="table-scroll"><table><thead><tr><th>Exam</th><th>Teacher</th><th>Batch / Class</th><th>Status</th><th>Enrolled</th><th>Attempts</th><th>In progress</th><th>Pending evaluation</th><th>Evaluated</th><th>Published results</th><th>Average %</th></tr></thead><tbody id="exam-monitoring-list"><tr><td colspan="11">Loading…</td></tr></tbody></table></div>
         </div>
         <p id="exam-monitoring-message" class="message"></p>
+      </section>
+
+      <section id="public-exams-page" class="hidden">
+        <div class="section-heading page-title"><div><h2>Free public exams</h2><p class="muted">Choose which completed exams appear in the public Free Online Exams catalogue. Publishing here does not change batch enrolments.</p></div><button id="refresh-public-exams" class="btn btn-primary" type="button">Refresh</button></div>
+        <div class="table-card"><div class="table-heading"><h3>Public exam catalogue</h3><p class="muted">Only exams already published/scheduled for enrolled students and containing questions can be made public.</p></div><div class="table-scroll"><table><thead><tr><th>Exam</th><th>Exam status</th><th>Public status</th><th>Public URL slug</th><th>Questions</th><th>Guest attempts</th><th>Action</th></tr></thead><tbody id="public-exams-list"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div>
+        <p id="public-exams-message" class="message"></p>
+        <div class="table-card"><div class="table-heading"><h3>Guest exam attempts</h3><p class="muted">Guest contact details are visible only to Admin. Use this list to monitor submissions and result release.</p></div><div class="table-scroll"><table><thead><tr><th>Started</th><th>Student</th><th>Contact</th><th>Class</th><th>Exam</th><th>Attempt</th><th>Status</th><th>Score</th><th>Result</th></tr></thead><tbody id="public-attempts-list"><tr><td colspan="9">Loading…</td></tr></tbody></table></div></div>
       </section>
 
       <section id="live-classes-page" class="hidden">
