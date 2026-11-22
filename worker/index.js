@@ -183,14 +183,15 @@ export default {
        const student = text(b.student_name,120), parent = text(b.parent_name,120);
        const phone = text(b.phone,30), email = text(b.email,254).toLowerCase();
        const studentClass = text(b.student_class,30), board = text(b.board,80);
+       const courseInterest = text(b.course_interest,120);
        if (!student || !phone || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !studentClass) {
          return reply({error:"Please provide student name, phone, valid email and class."},400,request);
        }
        const digits = phone.replace(/\D/g,"").length;
        if (digits < 7 || digits > 15) return reply({error:"Enter a valid phone number."},400,request);
        const id = crypto.randomUUID();
-       await env.DB.prepare("INSERT INTO enquiries(id,student_name,parent_name,phone,email,student_class,board) VALUES(?,?,?,?,?,?,?)")
-         .bind(id,student,parent||null,phone,email,studentClass,board||null).run();
+       await env.DB.prepare("INSERT INTO enquiries(id,student_name,parent_name,phone,email,student_class,board,course_interest) VALUES(?,?,?,?,?,?,?,?)")
+         .bind(id,student,parent||null,phone,email,studentClass,board||null,courseInterest||null).run();
        return reply({success:true,id,message:"Your enquiry has been received. Our team will contact you."},201,request);
      }
 
