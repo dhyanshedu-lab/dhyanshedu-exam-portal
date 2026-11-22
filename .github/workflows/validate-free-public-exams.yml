@@ -1,0 +1,60 @@
+name: Validate free public exams
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "worker/**"
+      - "app.js"
+      - "index.html"
+      - "migrations/**"
+      - "docs/features/free-public-exams.md"
+      - ".github/workflows/validate-free-public-exams.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check Worker and portal JavaScript syntax
+        run: |
+          node --check worker/index.js
+          node --check worker/public-exams.js
+          node --check app.js
+      - name: Check public page JavaScript syntax
+        run: |
+          python3 - <<'PY'
+          import re
+          source = open("free-exams.html", encoding="utf-8").read()
+          scripts = re.findall(r"<script>(.*?)</script>", source, flags=re.S)
+          if len(scripts) != 1:
+              raise SystemExit("Expected exactly one inline application script")
+          open("/tmp/free-exams.js", "w", encoding="utf-8").write(scripts[0])
+          PY
+          node --check /tmp/free-exams.js
+      - name: Validate public exam DDL on disposable SQLite
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          source = open("migrations/0001_dhyanshedu_consolidated.sql", encoding="utf-8").read()
+          start = source.index("CREATE TABLE IF NOT EXISTS public_exam_publications")
+          end = source.index("-- 6. Uploaded handwritten answer sheets", start)
+          ddl = source[start:end]
+          db = sqlite3.connect(":memory:")
+          db.execute("PRAGMA foreign_keys = ON")
+          for table in ("users", "curricula", "exam_pathways", "enquiries", "exams", "exam_attempts", "exam_questions"):
+              db.execute(f"CREATE TABLE {table} (id TEXT PRIMARY KEY)")
+          db.executescript(ddl)
+          expected = {"public_exam_publications", "public_assessment_registrations", "public_assessment_attempts", "public_assessment_answers"}
+          actual = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          missing = expected - actual
+          if missing:
+              raise SystemExit("Missing public exam tables: " + ", ".join(sorted(missing)))
+          violations = list(db.execute("PRAGMA foreign_key_check"))
+          if violations:
+              raise SystemExit("Foreign key validation failed: " + repr(violations))
+          print("Public exam DDL passed in disposable SQLite.")
+          PY
