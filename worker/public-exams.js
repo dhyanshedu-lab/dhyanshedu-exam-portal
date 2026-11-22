@@ -45,6 +45,18 @@ const audit = (env, actor, action, entity, details) => env.DB.prepare(
   "INSERT INTO audit_logs(id,actor_user_id,action,entity_type,entity_id,details_json) VALUES(?,?,?,?,?,?)"
 ).bind(uuid(), actor, action, "public_exam", entity, JSON.stringify(details || {}));
 
+async function enforceRateLimit(request, env, routeKey, limit, windowSeconds) {
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const ipHash = await sha256(ip);
+  const windowStart = Math.floor(Date.now() / 1000 / windowSeconds) * windowSeconds;
+  const row = await env.DB.prepare(
+    "INSERT INTO public_assessment_rate_limits(id,ip_hash,route_key,window_start,request_count) VALUES(?,?,?,?,1) ON CONFLICT(ip_hash,route_key,window_start) DO UPDATE SET request_count=request_count+1 RETURNING request_count"
+  ).bind(uuid(), ipHash, routeKey, windowStart).first();
+  if (Number(row?.request_count || 0) > limit) return fail("Too many requests. Please wait and try again.", 429, request);
+  await env.DB.prepare("DELETE FROM public_assessment_rate_limits WHERE window_start < ?").bind(Math.floor(Date.now()/1000)-172800).run();
+  return null;
+}
+
 async function getPublishedExam(env, slug) {
   return env.DB.prepare(
     "SELECT p.id publication_id,p.public_slug,p.max_attempts,p.results_mode,p.starts_at public_starts_at,p.ends_at public_ends_at,e.id,e.title,e.description,e.duration_minutes,e.total_marks,e.pass_marks,e.status exam_status,e.starts_at exam_starts_at,e.ends_at exam_ends_at,(SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id=e.id) question_count FROM public_exam_publications p JOIN exams e ON e.id=p.exam_id WHERE p.public_slug=? AND p.status='published'"
@@ -107,6 +119,8 @@ export async function handlePublicExamRequest(request, env, path, method) {
 
   const registerMatch = path.match(/^\/api\/public\/exams\/([a-z0-9-]+)\/register$/i);
   if (registerMatch && method === "POST") {
+    const limited = await enforceRateLimit(request, env, "register:" + registerMatch[1], 5, 3600);
+    if (limited) return limited;
     const b = await request.json().catch(() => ({}));
     const name = clean(b.student_name, 120), parent = clean(b.parent_name, 120);
     const phone = clean(b.phone, 30), email = clean(b.email, 254).toLowerCase();
@@ -182,6 +196,8 @@ export async function handlePublicExamRequest(request, env, path, method) {
 
   const answersMatch = path.match(/^\/api\/public\/attempts\/([0-9a-f-]+)\/answers$/i);
   if (answersMatch && method === "POST") {
+    const limited = await enforceRateLimit(request, env, "answer-save", 120, 60);
+    if (limited) return limited;
     const attempt = await validateAttempt(request, env, answersMatch[1]);
     if (!attempt) return fail("Attempt not found or access token is invalid.", 404, request);
     if (attempt.status !== "in_progress") return fail("This attempt is already submitted.", 409, request);
@@ -211,6 +227,8 @@ export async function handlePublicExamRequest(request, env, path, method) {
 
   const submitMatch = path.match(/^\/api\/public\/attempts\/([0-9a-f-]+)\/submit$/i);
   if (submitMatch && method === "POST") {
+    const limited = await enforceRateLimit(request, env, "submit", 10, 3600);
+    if (limited) return limited;
     const attempt = await validateAttempt(request, env, submitMatch[1]);
     if (!attempt) return fail("Attempt not found or access token is invalid.", 404, request);
     if (attempt.status !== "in_progress") return fail("This attempt has already been submitted.", 409, request);
