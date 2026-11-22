@@ -26,7 +26,7 @@ No public route may expose unpublished exams, private batch exams, answer keys, 
 - Teacher continues to create questions and exams using the existing question bank and authoring workflow.
 - Admin explicitly publishes an eligible exam to the public catalogue, assigns a stable public slug, chooses the attempt limit and result mode, and can unpublish/archive it.
 - Public publication is independent from the exam's batch enrolment visibility. Publishing publicly must not enroll a guest into a batch or expose the exam through unrelated student workspaces.
-- Admin can review public registrations and attempts; teacher/manual evaluation is limited to assigned or explicitly delegated evaluators.
+- Admin can review public registrations and attempts and evaluate descriptive answers in the first release. Teacher-scoped public-attempt evaluation is a follow-on enhancement; the first release does not expose guest personal details in teacher workspaces.
 - Unpublishing prevents new registrations/attempts. Existing in-progress attempts may finish until their server-side deadline unless an admin explicitly closes them.
 
 ## Data model
@@ -61,6 +61,7 @@ Admin-only routes must manage publication and review using the existing approved
 - Keep guest attempts separate from registered student accounts and batch enrolments.
 - Require explicit privacy-notice acceptance; marketing consent is optional and separate.
 - Add Cloudflare Turnstile and/or an effective rate-limit control before public launch to reduce automated abuse.
+- Confirm the privacy notice against the published privacy policy, define guest-record retention/deletion rules, and document who can access guest contact details.
 - Use parameterized SQL, bounded request sizes and strict CORS origin allow-listing.
 - Audit publish/unpublish, evaluation and result release actions.
 
