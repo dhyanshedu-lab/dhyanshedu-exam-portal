@@ -6,6 +6,13 @@ const ALLOWED_ORIGINS = [
   "https://dhyanshedu-lab.github.io"
 ];
 
+const allowedOrigin = origin => {
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  try {
+    const url = new URL(origin);
+    return url.protocol === "https:" && url.hostname.endsWith(".dhyanshedu-exam-portal.pages.dev");
+  } catch { return false; }
+};
 const json = (data, status, request) => {
   const origin = request.headers.get("Origin") || "";
   const headers = {
@@ -13,7 +20,7 @@ const json = (data, status, request) => {
     "Cache-Control": "no-store",
     "Vary": "Origin"
   };
-  if (ALLOWED_ORIGINS.includes(origin)) headers["Access-Control-Allow-Origin"] = origin;
+  if (allowedOrigin(origin)) headers["Access-Control-Allow-Origin"] = origin;
   return new Response(JSON.stringify(data), { status, headers });
 };
 const fail = (message, status, request) => json({ error: message }, status, request);
@@ -27,7 +34,7 @@ const newToken = () => {
 };
 const publicRequest = request => {
   const origin = request.headers.get("Origin") || "";
-  return !!origin && ALLOWED_ORIGINS.includes(origin);
+  return !!origin && allowedOrigin(origin);
 };
 const nowIso = () => new Date().toISOString();
 const isOpen = row => {
