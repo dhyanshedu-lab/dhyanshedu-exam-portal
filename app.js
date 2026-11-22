@@ -1286,7 +1286,8 @@ async function loadAdminFees(){
     fillSelect($("#fee-plan-batch"),boot.batches||[],x=>x.batch_name,"Any batch");
     plansBody.replaceChildren();
     (plans.fee_plans||[]).forEach(p=>{
-      const tr=plansBody.insertRow();[p.name,p.pricing_scope,p.billing_frequency,rupees(p.amount_paise),[p.effective_from,p.effective_to].filter(Boolean).join(" – ")||"—",p.public_status].forEach(v=>addCell(tr,v));
+      const frequencyLabel = p.billing_frequency === "one_time" && p.batch_type ? "Per 60-min session" : p.billing_frequency;
+      const tr=plansBody.insertRow();[p.name,p.pricing_scope,frequencyLabel,rupees(p.amount_paise),[p.effective_from,p.effective_to].filter(Boolean).join(" – ")||"—",p.public_status].forEach(v=>addCell(tr,v));
       const action=tr.insertCell(),sel=document.createElement("select");sel.className="status-select";
       ["draft","published","archived"].forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;sel.append(o);});sel.value=p.public_status;
       const btn=document.createElement("button");btn.className="btn btn-secondary btn-small";btn.textContent="Save status";
