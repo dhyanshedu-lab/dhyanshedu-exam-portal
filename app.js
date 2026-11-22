@@ -798,6 +798,13 @@ async function loadStats() {
     $("#overview-exams").textContent = stats.exams ?? 0;
     $("#overview-attempts").textContent = stats.attempts ?? 0;
     $("#overview-teachers").textContent = stats.teachers ?? 0;
+    const enquiries = stats.enquiries || {};
+    $("#overview-enquiries-total").textContent = enquiries.total ?? 0;
+    $("#overview-enquiries-new").textContent = enquiries.new ?? 0;
+    $("#overview-enquiries-contacted").textContent = enquiries.contacted ?? 0;
+    $("#overview-enquiries-demo").textContent = enquiries.demo_scheduled ?? 0;
+    $("#overview-enquiries-enrolled").textContent = enquiries.enrolled ?? 0;
+    $("#overview-enquiries-due").textContent = enquiries.follow_up_due ?? 0;
 
     try {
       const { teachers } = await api("/api/teachers");
