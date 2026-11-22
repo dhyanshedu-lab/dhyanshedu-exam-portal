@@ -120,3 +120,14 @@ textarea{resize:vertical;min-height:76px;line-height:1.5}
 
 
 .forgot-password{display:block;margin:12px auto 0;padding:4px 8px;border:0;background:transparent;color:var(--gold,#b88a3b);font:inherit;font-size:.9rem;cursor:pointer}.forgot-password:disabled{opacity:.6;cursor:wait}
+
+/* Admin system health and usage */
+.system-health-grid{margin:16px 0 22px}
+.system-health-grid .stat-card strong{font-size:23px}
+.health-good{color:#16834a!important}
+.health-bad{color:#b42318!important}
+.system-usage-card{margin-top:18px}
+#system-health-page .hint{line-height:1.7}
+#system-health-page td{white-space:normal;min-width:120px}
+#system-health-page td a{color:var(--gold,#9a742e);font-weight:600}
+@media(max-width:680px){.system-health-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.system-health-grid .stat-card{padding:14px}.system-health-grid .stat-card strong{font-size:20px}}

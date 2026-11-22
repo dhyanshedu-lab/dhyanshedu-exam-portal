@@ -120,7 +120,7 @@ function showPendingApproval() {
 }
 
 function page(name) {
-  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students", "exam-monitoring", "live-classes", "fees", "enquiries"];
+  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students", "exam-monitoring", "live-classes", "fees", "enquiries", "system-health"];
   for (const pageName of pages) {
     const section = $(`#${pageName}-page`);
     if (section) section.classList.toggle("hidden", pageName !== name);
@@ -1342,6 +1342,38 @@ async function loadEnquiryHistory(id,name){
 document.addEventListener("click",e=>{if(e.target.id==="refresh-enquiries")loadEnquiries();});
 document.addEventListener("change",e=>{if(e.target.id==="enquiry-status-filter")loadEnquiries();});
 
+
+async function loadSystemHealth() {
+  const ids=["health-worker","health-d1","health-r2","health-supabase"];
+  ids.forEach(id=>{const el=$("#"+id);if(el)el.textContent="Checking…";});
+  $("#system-health-message").textContent="Checking service connectivity and portal record totals…";
+  try {
+    const d=await api("/api/admin/system-health");
+    const set=(key,value,detail)=>{
+      $("#health-"+key).textContent=value;
+      $("#health-"+key+"-detail").textContent=detail||"";
+      $("#health-"+key).classList.toggle("health-good",value==="Online");
+      $("#health-"+key).classList.toggle("health-bad",value!=="Online");
+    };
+    set("worker",d.services.worker.status,d.services.worker.detail);
+    set("d1",d.services.d1.status,d.services.d1.detail);
+    set("r2",d.services.r2.status,d.services.r2.detail);
+    set("supabase",d.services.supabase.status,d.services.supabase.detail);
+    $("#usage-users").textContent=d.activity.users;
+    $("#usage-exams").textContent=d.activity.exams;
+    $("#usage-attempts").textContent=d.activity.attempts;
+    $("#usage-files").textContent=d.activity.files;
+    $("#system-health-refreshed").textContent="Last checked "+new Date(d.checked_at).toLocaleString();
+    const failed=Object.values(d.services).filter(x=>x.status!=="Online").length;
+    $("#system-health-message").textContent=failed
+      ? failed+" service check(s) need attention. Open the relevant provider dashboard for details."
+      : "All connected services passed their checks. Provider quota consumption is shown in the linked provider dashboards.";
+  } catch(e) {
+    $("#system-health-message").textContent=e.message;
+    ["worker","d1","r2","supabase"].forEach(k=>{const el=$("#health-"+k);el.textContent="Unavailable";el.classList.add("health-bad");});
+  }
+}
+
 async function loadAdminPage(name) {
   try {
     if (name==="classes") await loadClasses();
@@ -1354,6 +1386,7 @@ async function loadAdminPage(name) {
     if (name==="live-classes") await loadAdminLiveClasses();
     if (name==="fees") await loadAdminFees();
     if (name==="enquiries") await loadEnquiries();
+    if (name==="system-health") await loadSystemHealth();
   } catch(error) { $("#dashboard-message").textContent=error.message; }
 }
 
@@ -1635,6 +1668,8 @@ $("#pending-login-button").addEventListener("click", () => {
     "Your password is set. Sign in after the administrator approves your account."
   );
 });
+
+$("#refresh-system-health")?.addEventListener("click",()=>loadSystemHealth());
 
 $("#signout-button").addEventListener("click", async () => {
   await supabase.auth.signOut();

@@ -222,6 +222,40 @@ export default {
      if (!account) return reply({error:"Account is pending approval or inactive"},403,request);
 
 
+
+     if (path === "/api/admin/system-health" && method === "GET") {
+       if (account.role !== "admin") return reply({error:"Administrator access required"},403,request);
+       const count = async (sql) => {
+         try { const row=await env.DB.prepare(sql).first(); return Number(row?.total||0); }
+         catch { return null; }
+       };
+       const checks = await Promise.allSettled([
+         env.DB.prepare("SELECT 1 AS ok").first(),
+         env.STUDY_FILES_BUCKET ? env.STUDY_FILES_BUCKET.list({limit:1}) : Promise.reject(new Error("R2 binding missing")),
+         fetch(env.SUPABASE_URL+"/auth/v1/settings",{headers:{apikey:env.SUPABASE_PUBLISHABLE_KEY}})
+       ]);
+       const d1Ok=checks[0].status==="fulfilled";
+       const r2Ok=checks[1].status==="fulfilled";
+       const supaOk=checks[2].status==="fulfilled" && checks[2].value.ok;
+       const [users,exams,attempts,studyFiles,examFiles]=await Promise.all([
+         count("SELECT COUNT(*) AS total FROM users"),
+         count("SELECT COUNT(*) AS total FROM exams"),
+         count("SELECT COUNT(*) AS total FROM exam_attempts"),
+         count("SELECT COUNT(*) AS total FROM study_materials WHERE deleted_at IS NULL"),
+         count("SELECT COUNT(*) AS total FROM exam_attachments")
+       ]);
+       return reply({
+         success:true,checked_at:new Date().toISOString(),
+         services:{
+           worker:{status:"Online",detail:"Authenticated API request succeeded"},
+           d1:{status:d1Ok?"Online":"Unavailable",detail:d1Ok?"D1 query succeeded":"D1 query failed"},
+           r2:{status:r2Ok?"Online":"Unavailable",detail:r2Ok?"R2 bucket listing permission succeeded":"R2 bucket check failed"},
+           supabase:{status:supaOk?"Online":"Unavailable",detail:supaOk?"Supabase Auth settings endpoint responded":"Supabase Auth check failed"}
+         },
+         activity:{users:users??"—",exams:exams??"—",attempts:attempts??"—",files:studyFiles===null||examFiles===null?"—":studyFiles+examFiles}
+       },200,request);
+     }
+
      // Existing Admin enquiry inbox, assignment, follow-up and history APIs.
      if (path === "/api/enquiries" && method === "GET" && account.role === "admin") {
        const status = url.searchParams.get("status") || "";
