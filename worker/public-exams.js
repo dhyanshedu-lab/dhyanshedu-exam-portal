@@ -324,7 +324,7 @@ export async function handleAdminPublicExamRequest(request, env, path, method, u
     return json({ success: true, exams: rows.results || [] }, 200, request);
   }
   const publicationMatch = path.match(/^\/api\/admin\/public-exams\/([0-9a-f-]+)$/i);
-  if (publicationMatch && method === "PUT") {
+  if (publicationMatch && method === "PATCH") {
     const b = await request.json().catch(() => ({}));
     const examId = publicationMatch[1], status = clean(b.status, 20);
     const slug = clean(b.public_slug, 100).toLowerCase();
