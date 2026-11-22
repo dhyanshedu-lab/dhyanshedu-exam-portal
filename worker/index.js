@@ -175,6 +175,16 @@ export default {
 
 
 
+     // Public pricing catalogue: only active fee plans explicitly published by Admin.
+     if (path === "/api/public/fee-plans" && method === "GET") {
+       const origin = request.headers.get("Origin") || "";
+       if (!ALLOWED_ORIGINS.includes(origin)) return reply({error:"Origin not allowed"},403,request);
+       const q = await env.DB.prepare(
+         "SELECT id,name,plan_name,description,amount_paise,billing_frequency,batch_type,inclusions,terms,effective_from,effective_to FROM fee_plans WHERE is_active=1 AND public_status='published' AND (effective_from IS NULL OR effective_from<=date('now')) AND (effective_to IS NULL OR effective_to>=date('now')) ORDER BY name"
+       ).all();
+       return reply({success:true,fee_plans:q.results||[]},200,request);
+     }
+
      // Preserve the existing public website enquiry submission route.
      if (path === "/api/public/enquiries" && method === "POST") {
        const origin = request.headers.get("Origin") || "";
@@ -183,7 +193,16 @@ export default {
        const student = text(b.student_name,120), parent = text(b.parent_name,120);
        const phone = text(b.phone,30), email = text(b.email,254).toLowerCase();
        const studentClass = text(b.student_class,30), board = text(b.board,80);
-       const courseInterest = text(b.course_interest,120);
+       let courseInterest = text(b.course_interest,240);
+       const feePlanId = text(b.fee_plan_id,80), learningFormat = text(b.learning_format,20);
+       if (feePlanId) {
+         const plan = await env.DB.prepare(
+           "SELECT id,name,amount_paise,batch_type FROM fee_plans WHERE id=? AND is_active=1 AND public_status='published' AND (effective_from IS NULL OR effective_from<=date('now')) AND (effective_to IS NULL OR effective_to>=date('now'))"
+         ).bind(feePlanId).first();
+         if (!plan) return reply({error:"This fee option is no longer available. Please refresh the page and select again."},409,request);
+         if (!["one_to_one","group"].includes(learningFormat) || plan.batch_type !== learningFormat) return reply({error:"Please select a valid learning format."},400,request);
+         courseInterest = `${plan.name} | ${learningFormat === "one_to_one" ? "One-to-one" : "Small group"} | ₹${(Number(plan.amount_paise)/100).toLocaleString("en-IN")}/60 min`;
+       }
        if (!student || !phone || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !studentClass) {
          return reply({error:"Please provide student name, phone, valid email and class."},400,request);
        }
