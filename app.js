@@ -1325,9 +1325,9 @@ async function loadPublicExams(){
             const slug=prompt("Public exam URL slug (used in the free exam catalogue)",x.public_slug||suggested);if(slug===null)return;
             const max=prompt("Maximum attempts per student (1–10)",String(x.max_attempts||1));if(max===null)return;
             const mode=prompt("Result mode: immediate or after_review",x.results_mode||"immediate");if(mode===null)return;
-            const starts=prompt("Public exam opening date/time (optional ISO format, e.g. 2026-11-25T09:00:00)",x.starts_at||"");if(starts===null)return;
-            const ends=prompt("Public exam closing date/time (optional ISO format)",x.ends_at||"");if(ends===null)return;
-            payload={status:"published",public_slug:slug,max_attempts:Number(max),results_mode:mode,starts_at:starts||null,ends_at:ends||null};
+            const starts=prompt("Public exam opening date/time in your local time (optional, e.g. 2026-11-25T09:00)",x.starts_at||"");if(starts===null)return;
+            const ends=prompt("Public exam closing date/time in your local time (optional)",x.ends_at||"");if(ends===null)return;
+            payload={status:"published",public_slug:slug,max_attempts:Number(max),results_mode:mode,starts_at:starts?new Date(starts).toISOString():null,ends_at:ends?new Date(ends).toISOString():null};
           }
           await api("/api/admin/public-exams/"+encodeURIComponent(x.exam_id),{method:"PUT",body:JSON.stringify(payload)});
           await loadPublicExams();
