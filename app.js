@@ -1249,6 +1249,55 @@ async function loadExamMonitoring() {
   }
 }
 
+let publicReviewAttemptId=null;
+async function openPublicAttemptReview(attemptId){
+  const panel=$("#public-attempt-review"),content=$("#public-attempt-review-content");
+  if(!panel||!content)return;
+  panel.classList.remove("hidden");content.textContent="Loading attempt…";publicReviewAttemptId=attemptId;
+  try{
+    const d=await api("/api/admin/public-attempts/"+encodeURIComponent(attemptId));
+    const a=d.attempt;$("#public-attempt-review-title").textContent=a.student_name+" · "+a.exam_title+" · "+a.class_label;
+    content.replaceChildren();
+    (d.questions||[]).forEach((q,i)=>{
+      const card=document.createElement("article");card.className="form-card";
+      const title=document.createElement("h3");title.textContent="Question "+(i+1)+" · "+q.question_type+" · "+q.marks+" marks";card.append(title);
+      const prompt=document.createElement("p");prompt.textContent=q.question_text;card.append(prompt);
+      const answer=document.createElement("p");answer.className="muted";answer.textContent="Student answer: "+(q.answer||"No written answer");
+      if(q.selected_option_ids?.length){const selected=(q.options||[]).filter(o=>q.selected_option_ids.includes(o.id)).map(o=>(o.option_label||"")+" "+o.option_text);answer.textContent="Selected: "+selected.join("; ");}
+      card.append(answer);
+      if(["mcq","multiple_select"].includes(q.question_type)){
+        const correct=document.createElement("p");correct.className="muted";correct.textContent="Correct: "+(q.options||[]).filter(o=>Number(o.is_correct)===1).map(o=>(o.option_label||"")+" "+o.option_text).join("; ");card.append(correct);
+        const mark=document.createElement("p");mark.textContent="Auto-scored: "+(q.marks_awarded??0)+" marks";card.append(mark);
+      }else{
+        const grade=document.createElement("div");grade.className="form-grid";
+        const marksWrap=document.createElement("div"),label=document.createElement("label"),input=document.createElement("input");
+        label.textContent="Marks awarded (0–"+q.marks+")";input.type="number";input.min="0";input.max=String(q.marks);input.step="0.25";input.required=true;input.value=q.marks_awarded==null?"":String(q.marks_awarded);input.dataset.publicGrade=q.exam_question_id;marksWrap.append(label,input);
+        const feedbackWrap=document.createElement("div"),feedbackLabel=document.createElement("label"),feedback=document.createElement("textarea");
+        feedbackLabel.textContent="Teacher feedback (optional)";feedback.rows=2;feedback.value=q.teacher_feedback||"";feedback.dataset.publicFeedback=q.exam_question_id;feedbackWrap.append(feedbackLabel,feedback);
+        grade.append(marksWrap,feedbackWrap);card.append(grade);
+      }
+      content.append(card);
+    });
+    $("#public-attempt-review-message").textContent="";
+    $("#save-public-attempt-review").disabled=!(d.questions||[]).some(q=>["numerical","short_answer","long_answer"].includes(q.question_type));
+  }catch(e){content.textContent=e.message;}
+}
+document.addEventListener("click",async e=>{
+  if(e.target.id==="close-public-attempt-review")$("#public-attempt-review")?.classList.add("hidden");
+  if(e.target.id==="save-public-attempt-review"){
+    const button=e.target,grades=Array.from(document.querySelectorAll("[data-public-grade]")).map(input=>({
+      exam_question_id:input.dataset.publicGrade,marks_awarded:Number(input.value),
+      teacher_feedback:document.querySelector('[data-public-feedback="'+input.dataset.publicGrade+'"]')?.value||""
+    }));
+    if(!grades.length)return;
+    if(grades.some(g=>!Number.isFinite(g.marks_awarded))){$("#public-attempt-review-message").textContent="Enter marks for every manual question.";return;}
+    button.disabled=true;$("#public-attempt-review-message").textContent="Saving evaluation…";
+    try{await api("/api/admin/public-attempts/"+encodeURIComponent(publicReviewAttemptId)+"/evaluate",{method:"POST",body:JSON.stringify({grades})});$("#public-attempt-review-message").textContent="Evaluation saved. You can now release the result.";await loadPublicExams();}
+    catch(err){$("#public-attempt-review-message").textContent=err.message;}
+    finally{button.disabled=false;}
+  }
+});
+
 async function loadPublicExams(){
   const body=$("#public-exams-list"),attemptBody=$("#public-attempts-list");
   if(!body||!attemptBody)return;
@@ -1292,7 +1341,10 @@ async function loadPublicExams(){
       const tr=attemptBody.insertRow();
       [x.started_at?new Date(x.started_at).toLocaleString():"—",x.student_name,x.phone+(x.email?" · "+x.email:""),x.class_label,x.exam_title,"#"+x.attempt_number,x.status,x.score==null?"—":Number(x.score).toFixed(2)+" / "+Number(x.total_marks||0).toFixed(2)].forEach(v=>{const td=tr.insertCell();td.textContent=v??"—";});
       const td=tr.insertCell();
-      if(x.status==="evaluated"&&!x.result_released_at){
+      if(x.status==="submitted"){
+        const review=document.createElement("button");review.className="btn btn-small btn-primary";review.textContent="Evaluate";
+        review.addEventListener("click",()=>openPublicAttemptReview(x.attempt_id));td.append(review);
+      }else if(x.status==="evaluated"&&!x.result_released_at){
         const release=document.createElement("button");release.className="btn btn-small btn-primary";release.textContent="Release result";
         release.addEventListener("click",async()=>{if(!confirm("Release this result to the student?"))return;try{await api("/api/admin/public-attempts/"+encodeURIComponent(x.attempt_id)+"/release-result",{method:"POST",body:"{}"});await loadPublicExams();}catch(e){alert(e.message);}});
         td.append(release);
