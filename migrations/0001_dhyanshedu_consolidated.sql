@@ -851,7 +851,6 @@ WHERE type = 'table'
     'public_exam_publications',
     'public_assessment_registrations',
     'public_assessment_attempts',
-    'public_assessment_answers',
     'public_assessment_rate_limits',
     'answer_sheet_submissions',
     'answer_sheet_pages',
