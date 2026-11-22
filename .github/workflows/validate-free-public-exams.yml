@@ -38,7 +38,7 @@ jobs:
               db.execute(f"CREATE TABLE {table} (id TEXT PRIMARY KEY)")
           db.execute("CREATE TABLE exam_questions (id TEXT PRIMARY KEY, exam_id TEXT REFERENCES exams(id))")
           db.executescript(ddl)
-          expected = {"public_exam_publications", "public_assessment_registrations", "public_assessment_attempts", "public_assessment_answers"}
+          expected = {"public_exam_publications", "public_assessment_registrations", "public_assessment_attempts", "public_assessment_answers", "public_assessment_rate_limits"}
           actual = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
           missing = expected - actual
           if missing:
