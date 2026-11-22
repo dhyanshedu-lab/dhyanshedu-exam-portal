@@ -120,7 +120,7 @@ function showPendingApproval() {
 }
 
 function page(name) {
-  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students", "exam-monitoring", "live-classes", "fees", "enquiries", "system-health"];
+  const pages = ["overview", "teachers", "classes", "subjects", "batches", "assignments", "students", "exam-monitoring", "public-exams", "live-classes", "fees", "enquiries", "system-health"];
   for (const pageName of pages) {
     const section = $(`#${pageName}-page`);
     if (section) section.classList.toggle("hidden", pageName !== name);
@@ -1249,6 +1249,57 @@ async function loadExamMonitoring() {
   }
 }
 
+async function loadPublicExams(){
+  const body=$("#public-exams-list"),attemptBody=$("#public-attempts-list");
+  if(!body||!attemptBody)return;
+  body.innerHTML='<tr><td colspan="7">Loading public exam catalogue…</td></tr>';
+  attemptBody.innerHTML='<tr><td colspan="9">Loading enquiry registrations…</td></tr>';
+  showMessage("public-exams-message","");
+  try{
+    const [catalogue,attempts]=await Promise.all([api("/api/admin/public-exams"),api("/api/admin/public-attempts")]);
+    body.replaceChildren();
+    (catalogue.exams||[]).forEach(x=>{
+      const tr=body.insertRow(),title=tr.insertCell();title.textContent=x.title||"Untitled";
+      [x.exam_status,x.public_status||"Not published",x.public_slug||"—",x.question_count,x.attempts].forEach(v=>{const td=tr.insertCell();td.textContent=v??"—";});
+      const action=tr.insertCell(),btn=document.createElement("button");
+      btn.className="btn btn-small "+(x.public_status==="published"?"btn-danger":"btn-primary");
+      btn.textContent=x.public_status==="published"?"Unpublish":"Publish / Update";
+      btn.addEventListener("click",async()=>{
+        try{
+          let payload;
+          if(x.public_status==="published"){
+            if(!confirm("Remove this exam from the public catalogue? Existing enquiry and score records will remain."))return;
+            payload={status:"draft",public_slug:x.public_slug||"exam-"+x.exam_id.slice(0,8),max_attempts:x.max_attempts||1,starts_at:x.starts_at||null,ends_at:x.ends_at||null};
+          }else{
+            const suggested=(x.title||"free-exam").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,80)||"free-exam";
+            const slug=prompt("Public exam URL slug",x.public_slug||suggested);if(slug===null)return;
+            const max=prompt("Maximum attempts per student (1–10)",String(x.max_attempts||1));if(max===null)return;
+            const starts=prompt("Opening date/time in your local time (optional, e.g. 2026-11-25T09:00)",x.starts_at||"");if(starts===null)return;
+            const ends=prompt("Closing date/time in your local time (optional)",x.ends_at||"");if(ends===null)return;
+            payload={status:"published",public_slug:slug,max_attempts:Number(max),starts_at:starts?new Date(starts).toISOString():null,ends_at:ends?new Date(ends).toISOString():null};
+          }
+          await api("/api/admin/public-exams/"+encodeURIComponent(x.exam_id),{method:"PATCH",body:JSON.stringify(payload)});
+          await loadPublicExams();
+        }catch(error){alert(error.message);}
+      });
+      action.append(btn);
+    });
+    if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=7;td.textContent="No exams have been created yet.";}
+    attemptBody.replaceChildren();
+    (attempts.attempts||[]).forEach(x=>{
+      const tr=attemptBody.insertRow();
+      [x.started_at?new Date(x.started_at).toLocaleString():"—",x.student_name,x.phone+(x.email?" · "+x.email:""),x.class_label,x.exam_title,"#"+x.attempt_number,x.status,x.score==null?"—":Number(x.score).toFixed(2)+" / "+Number(x.total_marks||0).toFixed(2)].forEach(v=>{const td=tr.insertCell();td.textContent=v??"—";});
+      const action=tr.insertCell();action.textContent=x.status==="submitted"?"Score recorded":"Answers not stored";
+    });
+    if(!attemptBody.children.length){const tr=attemptBody.insertRow(),td=tr.insertCell();td.colSpan=9;td.textContent="No free-exam registrations yet.";}
+  }catch(error){
+    body.innerHTML='<tr><td colspan="7">'+error.message+'</td></tr>';
+    attemptBody.innerHTML='<tr><td colspan="9">Could not load enquiry registrations.</td></tr>';
+    showMessage("public-exams-message","Could not load public exam data.");
+  }
+}
+document.addEventListener("click",e=>{if(e.target.id==="refresh-public-exams")loadPublicExams();});
+
 document.addEventListener("change",e=>{
   if(e.target.id==="monitor-status-filter")renderExamMonitoringRows();
 });
@@ -1435,6 +1486,7 @@ async function loadAdminPage(name) {
     if (name==="students") await loadStudents();
     if (name==="teachers") await loadTeachers();
     if (name==="exam-monitoring") await loadExamMonitoring();
+    if (name==="public-exams") await loadPublicExams();
     if (name==="live-classes") await loadAdminLiveClasses();
     if (name==="fees") await loadAdminFees();
     if (name==="enquiries") await loadEnquiries();
