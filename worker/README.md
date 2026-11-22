@@ -31,3 +31,8 @@ This branch captures the Cloudflare Worker modules for `dhyanshedu-api` and reco
 ## Deferred
 - Admin, teacher and student authenticated end-to-end tests are deferred until the user is ready.
 - Do not treat syntax, SQL parsing or the isolated helper assertions as a substitute for those end-to-end tests.
+
+
+## Free public exams — development branch only
+
+The Free Online Exams Worker implementation is being developed in `worker/public-exams.js` and imported by `worker/index.js`. It is not part of the deployed Worker version 28. When this feature is ready for a development deployment, the module upload must include `public-exams.js` alongside `index.js`, `study.js` and `fees.js`, preserving all existing bindings. Do not upload this branch to production or run its D1 migration until the feature PR has passed end-to-end tests and the database migration has been reviewed and approved.
