@@ -162,10 +162,6 @@ export async function handlePublicExamRequest(request, env, path, method) {
   if (attemptMatch && method === "GET") {
     const attempt = await validateAttempt(request, env, attemptMatch[1]);
     if (!attempt) return fail("Attempt not found or access token is invalid.", 404, request);
-    if (attempt.status === "in_progress" && Date.now() > new Date(attempt.expires_at).getTime()) {
-      await env.DB.prepare("UPDATE public_assessment_attempts SET status='expired' WHERE id=? AND status='in_progress'").bind(attempt.id).run();
-      return fail("The exam time has ended. Submit is no longer available.", 409, request);
-    }
     const [questions, answers] = await Promise.all([
       publicQuestions(env, attempt.exam_id),
       env.DB.prepare("SELECT exam_question_id,answer_text,selected_option_ids FROM public_assessment_answers WHERE public_attempt_id=?").bind(attempt.id).all()
@@ -215,7 +211,6 @@ export async function handlePublicExamRequest(request, env, path, method) {
     const attempt = await validateAttempt(request, env, submitMatch[1]);
     if (!attempt) return fail("Attempt not found or access token is invalid.", 404, request);
     if (attempt.status !== "in_progress") return fail("This attempt has already been submitted.", 409, request);
-    if (Date.now() > new Date(attempt.expires_at).getTime()) return fail("The exam time has ended.", 409, request);
     const questions = await env.DB.prepare(
       "SELECT eq.id,eq.marks,eq.negative_marks,q.question_type FROM exam_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.sort_order"
     ).bind(attempt.exam_id).all();
