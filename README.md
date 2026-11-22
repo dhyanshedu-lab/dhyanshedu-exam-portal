@@ -63,3 +63,10 @@ This is a first frontend/authentication milestone, not a complete exam system. B
 - Test with separate admin, teacher and student accounts.
 
 Do not add student data or conduct real exams until the production security and exam-submission work is complete.
+
+
+## Free public exams (development)
+
+The approved Free Online Exams module is documented in [docs/features/free-public-exams.md](docs/features/free-public-exams.md). It adds a public exam catalogue to the existing DhyanshEdu website, guest registration with a privacy notice, independent public attempts, server-side timing/scoring, and controlled result release.
+
+The proposed D1 schema is included in the consolidated migration. It is a development draft only: do not execute it against production D1 or deploy public exam endpoints until the actual D1 schema, Worker implementation, privacy controls, and end-to-end tests have been reviewed and approved.
