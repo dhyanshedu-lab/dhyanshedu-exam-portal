@@ -51,6 +51,12 @@ jobs:
                      ("attempt-1", "reg-1", "exam-1", 1, "token-hash", "2026-11-22T00:00:00Z", "2026-11-22T01:00:00Z"))
           db.execute("INSERT INTO public_assessment_answers(id,public_attempt_id,exam_question_id,selected_option_ids) VALUES(?,?,?,?)",
                      ("answer-1", "attempt-1", "question-1", "[]"))
+          db.execute("INSERT INTO public_assessment_rate_limits(id,ip_hash,route_key,window_start,request_count) VALUES(?,?,?,?,1)",
+                     ("rate-1", "hashed-ip", "register:exam-1", 1000))
+          count = db.execute("INSERT INTO public_assessment_rate_limits(id,ip_hash,route_key,window_start,request_count) VALUES(?,?,?,?,1) ON CONFLICT(ip_hash,route_key,window_start) DO UPDATE SET request_count=request_count+1 RETURNING request_count",
+                             ("rate-2", "hashed-ip", "register:exam-1", 1000)).fetchone()[0]
+          if count != 2:
+              raise SystemExit("Public exam rate-limit counter did not increment.")
           violations = list(db.execute("PRAGMA foreign_key_check"))
           if violations:
               raise SystemExit("Foreign key validation failed: " + repr(violations))
