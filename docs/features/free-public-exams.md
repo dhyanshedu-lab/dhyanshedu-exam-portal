@@ -60,7 +60,7 @@ Admin-only routes must manage publication and review using the existing approved
 - Enforce attempt limits in D1 transactions/batches, not only in browser code.
 - Keep guest attempts separate from registered student accounts and batch enrolments.
 - Require explicit privacy-notice acceptance; marketing consent is optional and separate.
-- Add Cloudflare Turnstile and/or an effective rate-limit control before public launch to reduce automated abuse.
+- Enforce per-IP hashed request limits for guest registration, answer saves and submissions; add Cloudflare Turnstile before public launch to reduce automated abuse.
 - Confirm the privacy notice against the published privacy policy, define guest-record retention/deletion rules, and document who can access guest contact details.
 - Use parameterized SQL, bounded request sizes and strict CORS origin allow-listing.
 - Audit publish/unpublish, evaluation and result release actions.
