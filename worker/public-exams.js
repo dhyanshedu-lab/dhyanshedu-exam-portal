@@ -241,8 +241,8 @@ export async function handlePublicExamRequest(request, env, path, method) {
       const awarded = correct ? Number(q.marks) : (answer && ["mcq", "multiple_select"].includes(q.question_type) ? -Number(q.negative_marks || 0) : 0);
       score += awarded;
       writes.push(env.DB.prepare(
-        "UPDATE public_assessment_answers SET is_correct=?,marks_awarded=? WHERE public_attempt_id=? AND exam_question_id=?"
-      ).bind(correct ? 1 : 0, awarded, attempt.id, q.id));
+        "INSERT INTO public_assessment_answers(id,public_attempt_id,exam_question_id,answer_text,selected_option_ids,is_correct,marks_awarded,answered_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(public_attempt_id,exam_question_id) DO UPDATE SET is_correct=excluded.is_correct,marks_awarded=excluded.marks_awarded"
+      ).bind(uuid(), attempt.id, q.id, answer?.answer_text || null, answer?.selected_option_ids || "[]", correct ? 1 : 0, awarded, nowIso()));
     }
     score = Math.max(0, score);
     const total = Number(attempt.total_marks || 0);
