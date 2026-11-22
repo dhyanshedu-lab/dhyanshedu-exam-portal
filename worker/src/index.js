@@ -698,7 +698,7 @@ export default {
 
      if (path === "/api/dashboard/stats" && method === "GET") {
 
-       const [t,s,e,a,c,sub,b] = await Promise.all([
+       const [t,s,e,a,c,sub,b,enquiryStats] = await Promise.all([
 
          env.DB.prepare("SELECT COUNT(*) total FROM users WHERE role='teacher' AND deleted_at IS NULL").first(),
 
@@ -712,11 +712,13 @@ export default {
 
          env.DB.prepare("SELECT COUNT(*) total FROM subjects WHERE status='active'").first(),
 
-         env.DB.prepare("SELECT COUNT(*) total FROM batches WHERE status='active'").first()
+         env.DB.prepare("SELECT COUNT(*) total FROM batches WHERE status='active'").first(),
+
+         env.DB.prepare("SELECT COUNT(*) total, SUM(CASE WHEN status='new' THEN 1 ELSE 0 END) new, SUM(CASE WHEN status='contacted' THEN 1 ELSE 0 END) contacted, SUM(CASE WHEN status='demo_scheduled' THEN 1 ELSE 0 END) demo_scheduled, SUM(CASE WHEN status='enrolled' THEN 1 ELSE 0 END) enrolled, SUM(CASE WHEN status='closed' THEN 1 ELSE 0 END) closed, SUM(CASE WHEN follow_up_at IS NOT NULL AND follow_up_at <= datetime('now') AND status NOT IN ('enrolled','closed') THEN 1 ELSE 0 END) follow_up_due FROM enquiries").first()
 
        ]);
 
-       return reply({success:true,stats:{teachers:t?.total||0,students:s?.total||0,exams:e?.total||0,attempts:a?.total||0,classes:c?.total||0,subjects:sub?.total||0,batches:b?.total||0}},200,request);
+       return reply({success:true,stats:{teachers:t?.total||0,students:s?.total||0,exams:e?.total||0,attempts:a?.total||0,classes:c?.total||0,subjects:sub?.total||0,batches:b?.total||0,enquiries:{total:enquiryStats?.total||0,new:enquiryStats?.new||0,contacted:enquiryStats?.contacted||0,demo_scheduled:enquiryStats?.demo_scheduled||0,enrolled:enquiryStats?.enrolled||0,closed:enquiryStats?.closed||0,follow_up_due:enquiryStats?.follow_up_due||0}}},200,request);
 
      }
 
