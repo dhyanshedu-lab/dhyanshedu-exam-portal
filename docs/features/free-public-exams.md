@@ -36,6 +36,7 @@ Public origin-checked routes:
 - `POST /api/public/exams/:slug/register`: validate contact details and consent, create enquiry registration and attempt metadata, return one-time in-memory token.
 - `GET /api/public/attempts/:id`: validate token and return questions/options without correct-answer flags.
 - `POST /api/public/attempts/:id/submit`: accept the answer payload once, validate every question/option, score server-side, persist only final score and return result/answer key immediately.
+- `GET /api/public/attempts/:id/result`: allow a result retry after a completed submission using the in-memory attempt token; it returns the stored score and answer key, never the student's selected options.
 
 Admin-only routes:
 - `GET /api/admin/public-exams`: publication controls and exam catalogue.
