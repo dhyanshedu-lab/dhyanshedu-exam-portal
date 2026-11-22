@@ -4,6 +4,27 @@ export const isISODate = (value) => {
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 };
 
+export const teacherCoveragePredicate = (batchAlias) => `EXISTS (
+  SELECT 1 FROM teacher_coverage_assignments tc
+  WHERE tc.status='active'
+    AND tc.substitute_teacher_id=?
+    AND date('now') BETWEEN tc.effective_from AND tc.effective_to
+    AND (
+      (tc.scope_type='batch' AND tc.batch_id=${batchAlias}.id)
+      OR (
+        tc.scope_type='class_subject'
+        AND tc.class_id=${batchAlias}.class_id
+        AND tc.subject_id=${batchAlias}.subject_id
+        AND NOT EXISTS (
+          SELECT 1 FROM teacher_coverage_assignments tb
+          WHERE tb.status='active' AND tb.scope_type='batch'
+            AND tb.batch_id=${batchAlias}.id
+            AND date('now') BETWEEN tb.effective_from AND tb.effective_to
+        )
+      )
+    )
+)`;
+
 const txt=(v,n=160)=>String(v??"").trim().slice(0,n);
 const json=(data,status,request)=>{const origin=request.headers.get("Origin")||"";const headers={"Content-Type":"application/json","Cache-Control":"no-store","Vary":"Origin"};if(["https://dhyanshedu-lab.github.io","https://dhyanshedu-exam-portal.dhyanshedu.workers.dev","https://dhyanshedu-exam-portal.pages.dev","https://dhyanshedu.com","https://www.dhyanshedu.com"].includes(origin))headers["Access-Control-Allow-Origin"]=origin;return new Response(JSON.stringify(data),{status,headers});};
 const fail=(message,status=400,request)=>json({error:message},status,request);
@@ -88,7 +109,7 @@ export async function handleStudyRequest(request,env,user,account,path,method){
         if(!teacherRow)return fail("Every substitute must be an approved active teacher.",400,request);
         if(scope==="batch"){
           const bid=txt(c.batch_id,80);
-          const primary=await env.DB.prepare("SELECT b.id,b.class_id,b.subject_id FROM batches b JOIN batch_teachers bt ON bt.batch_id=b.id WHERE b.id=? AND bt.teacher_id=? AND b.status='active'").bind(bid,leave.teacher_id).first();
+          const primary=await env.DB.prepare("SELECT b.id,b.class_id,b.subject_id FROM batches b WHERE b.id=? AND b.status='active' AND (EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=b.id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})").bind(bid,leave.teacher_id).first();
           const qualified=primary?await env.DB.prepare("SELECT 1 ok WHERE EXISTS (SELECT 1 FROM teacher_assignments WHERE teacher_id=? AND class_id=? AND subject_id=?) OR EXISTS (SELECT 1 FROM batch_teachers WHERE teacher_id=? AND batch_id=?)").bind(sub,primary.class_id,primary.subject_id,sub,bid).first():null;
           if(!primary||!qualified)return fail("Substitute must be assigned to the batch's class and subject or already assigned to this batch.",400,request);
           c._batch=primary;
@@ -136,26 +157,26 @@ export async function handleStudyRequest(request,env,user,account,path,method){
   const materialDownload=path.match(/^\/api\/materials\/([0-9a-f-]+)\/download$/i);
   if(materialDownload&&method==="GET"){
     const row=teacher
-      ? await env.DB.prepare("SELECT r2_object_key,file_name,mime_type FROM study_materials WHERE id=? AND deleted_at IS NULL AND (teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=study_materials.batch_id AND bt.teacher_id=?))").bind(materialDownload[1],user.id,user.id).first()
+      ? await env.DB.prepare("SELECT r2_object_key,file_name,mime_type FROM study_materials WHERE id=? AND deleted_at IS NULL AND (teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=study_materials.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("study_materials")})").bind(materialDownload[1],user.id,user.id,user.id).first()
       : student?await env.DB.prepare("SELECT r2_object_key,file_name,mime_type FROM study_materials WHERE id=? AND deleted_at IS NULL AND (visibility='all_students' OR EXISTS (SELECT 1 FROM batch_students bs WHERE bs.batch_id=study_materials.batch_id AND bs.student_id=? AND bs.status='active'))").bind(materialDownload[1],user.id).first():null;
     return download(env,request,row);
   }
   const submissionAttach=path.match(/^\/api\/submissions\/([0-9a-f-]+)\/attachments\/([0-9a-f-]+)\/download$/i);
   if(submissionAttach&&method==="GET"&&teacher){
-    const row=await env.DB.prepare("SELECT sa.r2_object_key,sa.file_name,sa.mime_type FROM submission_attachments sa JOIN assignment_submissions sub ON sub.id=sa.submission_id JOIN assignments a ON a.id=sub.assignment_id WHERE sub.id=? AND sa.id=? AND (a.teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=a.batch_id AND bt.teacher_id=?))").bind(submissionAttach[1],submissionAttach[2],user.id,user.id).first();
+    const row=await env.DB.prepare("SELECT sa.r2_object_key,sa.file_name,sa.mime_type FROM submission_attachments sa JOIN assignment_submissions sub ON sub.id=sa.submission_id JOIN assignments a ON a.id=sub.assignment_id JOIN batches b ON b.id=a.batch_id WHERE sub.id=? AND sa.id=? AND (a.teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=a.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})").bind(submissionAttach[1],submissionAttach[2],user.id,user.id,user.id).first();
     return download(env,request,row);
   }
   const attach=path.match(/^\/api\/assignments\/([0-9a-f-]+)\/attachments\/([0-9a-f-]+)\/download$/i);
   if(attach&&method==="GET"){
     const row=teacher
-      ? await env.DB.prepare("SELECT aa.r2_object_key,aa.file_name,aa.mime_type FROM assignment_attachments aa JOIN assignments a ON a.id=aa.assignment_id WHERE aa.id=? AND a.id=? AND (a.teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=a.batch_id AND bt.teacher_id=?))").bind(attach[2],attach[1],user.id,user.id).first()
+      ? await env.DB.prepare("SELECT aa.r2_object_key,aa.file_name,aa.mime_type FROM assignment_attachments aa JOIN assignments a ON a.id=aa.assignment_id JOIN batches b ON b.id=a.batch_id WHERE aa.id=? AND a.id=? AND (a.teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=a.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})").bind(attach[2],attach[1],user.id,user.id,user.id).first()
       : student?await env.DB.prepare("SELECT aa.r2_object_key,aa.file_name,aa.mime_type FROM assignment_attachments aa JOIN assignments a ON a.id=aa.assignment_id JOIN batch_students bs ON bs.batch_id=a.batch_id AND bs.student_id=? AND bs.status='active' WHERE aa.id=? AND a.id=? AND a.status='published'").bind(user.id,attach[2],attach[1]).first():null;
     return download(env,request,row);
   }
   const examUpload=path.match(/^\/api\/teacher\/exams\/([0-9a-f-]+)\/attachments$/i);
   if(examUpload&&method==="POST"&&teacher){
     let up;try{
-      const exam=await env.DB.prepare("SELECT id FROM exams WHERE id=? AND (created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=exams.batch_id AND bt.teacher_id=?))").bind(examUpload[1],user.id,user.id).first();
+      const exam=await env.DB.prepare("SELECT exams.id FROM exams JOIN batches b ON b.id=exams.batch_id WHERE exams.id=? AND (exams.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=exams.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})").bind(examUpload[1],user.id,user.id,user.id).first();
       if(!exam)return fail("Exam not found or access denied.",404,request);
       up=await upload(request,env);
       if(!["application/pdf","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.presentationml.presentation"].includes(up.mime))throw new Error("Question paper must be PDF, DOCX or PPTX.");
@@ -165,12 +186,12 @@ export async function handleStudyRequest(request,env,user,account,path,method){
   }
   const examDownload=path.match(/^\/api\/exams\/([0-9a-f-]+)\/attachments\/([0-9a-f-]+)\/download$/i);
   if(examDownload&&method==="GET"){
-    const row=teacher?await env.DB.prepare("SELECT ea.r2_object_key,ea.file_name,ea.mime_type FROM exam_attachments ea JOIN exams e ON e.id=ea.exam_id WHERE ea.exam_id=? AND ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?))").bind(examDownload[1],examDownload[2],user.id,user.id).first():student?await env.DB.prepare("SELECT ea.r2_object_key,ea.file_name,ea.mime_type FROM exam_attachments ea JOIN exams e ON e.id=ea.exam_id JOIN batch_students bs ON bs.batch_id=e.batch_id AND bs.student_id=? AND bs.status='active' WHERE ea.exam_id=? AND ea.id=? AND e.status IN ('scheduled','published','closed')").bind(user.id,examDownload[1],examDownload[2]).first():null;
+    const row=teacher?await env.DB.prepare("SELECT ea.r2_object_key,ea.file_name,ea.mime_type FROM exam_attachments ea JOIN exams e ON e.id=ea.exam_id JOIN batches b ON b.id=e.batch_id WHERE ea.exam_id=? AND ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})").bind(examDownload[1],examDownload[2],user.id,user.id,user.id).first():student?await env.DB.prepare("SELECT ea.r2_object_key,ea.file_name,ea.mime_type FROM exam_attachments ea JOIN exams e ON e.id=ea.exam_id JOIN batch_students bs ON bs.batch_id=e.batch_id AND bs.student_id=? AND bs.status='active' WHERE ea.exam_id=? AND ea.id=? AND e.status IN ('scheduled','published','closed')").bind(user.id,examDownload[1],examDownload[2]).first():null;
     return download(env,request,row);
   }
   if(path==="/api/teacher/materials"&&method==="POST"&&teacher){
     let up;try{up=await upload(request,env);const title=txt(up.form.get("title"),180),description=txt(up.form.get("description"),2000)||null,bid=txt(up.form.get("batch_id"),80);
-      const b=await env.DB.prepare("SELECT b.id,b.class_id,b.subject_id FROM batches b JOIN batch_teachers bt ON bt.batch_id=b.id WHERE b.id=? AND bt.teacher_id=? AND b.status='active'").bind(bid,user.id).first();
+      const b=await env.DB.prepare("SELECT b.id,b.class_id,b.subject_id FROM batches b WHERE b.id=? AND b.status='active' AND (EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=b.id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})").bind(bid,user.id,user.id).first();
       if(!title||!b)throw new Error("Enter a title and choose an active batch assigned to you.");
       const id=crypto.randomUUID();await env.DB.prepare("INSERT INTO study_materials(id,title,description,class_id,subject_id,batch_id,teacher_id,r2_object_key,file_name,mime_type,file_size_bytes,visibility) VALUES(?,?,?,?,?,?,?,?,?,?,?,'assigned')").bind(id,title,description,b.class_id,b.subject_id,b.id,user.id,up.key,up.name,up.mime,up.size).run();
       return json({success:true,id,title,file_name:up.name},201,request);
@@ -179,7 +200,7 @@ export async function handleStudyRequest(request,env,user,account,path,method){
   if(path==="/api/teacher/assignments"&&method==="POST"&&teacher){
     const b=await request.json().catch(()=>({})),title=txt(b.title,180),instructions=txt(b.instructions,6000)||null,bid=txt(b.batch_id,80),due=txt(b.due_at,40)||null,marks=b.max_marks===""||b.max_marks==null?null:Number(b.max_marks);
     if(!title||!bid||(marks!==null&&(!Number.isFinite(marks)||marks<0))||(due&&!Number.isFinite(Date.parse(due))))return fail("Enter a title, batch, valid due date and maximum marks.",400,request);
-    const batch=await env.DB.prepare("SELECT b.id,b.class_id,b.subject_id FROM batches b JOIN batch_teachers bt ON bt.batch_id=b.id WHERE b.id=? AND bt.teacher_id=? AND b.status='active'").bind(bid,user.id).first();
+    const batch=await env.DB.prepare("SELECT b.id,b.class_id,b.subject_id FROM batches b WHERE b.id=? AND b.status='active' AND (EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=b.id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})").bind(bid,user.id,user.id).first();
     if(!batch)return fail("Choose an active batch assigned to you.",403,request);
     const id=crypto.randomUUID();await env.DB.prepare("INSERT INTO assignments(id,title,instructions,class_id,subject_id,batch_id,teacher_id,due_at,max_marks,status) VALUES(?,?,?,?,?,?,?,?,?,'published')").bind(id,title,instructions,batch.class_id,batch.subject_id,batch.id,user.id,due?new Date(Date.parse(due)).toISOString():null,marks).run();
     return json({success:true,id,status:"published"},201,request);
