@@ -439,6 +439,15 @@ CREATE TABLE IF NOT EXISTS public_assessment_attempts (
     UNIQUE (registration_id, exam_id, attempt_number)
 );
 
+CREATE TABLE IF NOT EXISTS public_assessment_rate_limits (
+    id TEXT PRIMARY KEY,
+    ip_hash TEXT NOT NULL,
+    route_key TEXT NOT NULL,
+    window_start INTEGER NOT NULL,
+    request_count INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (ip_hash, route_key, window_start)
+);
+
 CREATE TABLE IF NOT EXISTS public_assessment_answers (
     id TEXT PRIMARY KEY,
     public_attempt_id TEXT NOT NULL REFERENCES public_assessment_attempts(id),
@@ -794,6 +803,8 @@ CREATE INDEX IF NOT EXISTS idx_public_assessment_attempts_registration
     ON public_assessment_attempts(registration_id, exam_id);
 CREATE INDEX IF NOT EXISTS idx_public_assessment_attempts_expiry
     ON public_assessment_attempts(status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_public_assessment_rate_limits_window
+    ON public_assessment_rate_limits(window_start);
 CREATE INDEX IF NOT EXISTS idx_public_assessment_answers_attempt
     ON public_assessment_answers(public_attempt_id);
 CREATE INDEX IF NOT EXISTS idx_answer_sheets_student_status
@@ -860,6 +871,7 @@ WHERE type = 'table'
     'public_assessment_registrations',
     'public_assessment_attempts',
     'public_assessment_answers',
+    'public_assessment_rate_limits',
     'answer_sheet_submissions',
     'answer_sheet_pages',
     'answer_evaluations',
