@@ -1322,7 +1322,7 @@ async function loadPublicExams(){
             payload={status:"draft",public_slug:x.public_slug||"exam-"+x.exam_id.slice(0,8),max_attempts:x.max_attempts||1,results_mode:x.results_mode||"immediate",starts_at:x.starts_at||null,ends_at:x.ends_at||null};
           }else{
             const suggested=(x.title||"free-exam").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,80)||"free-exam";
-            const slug=prompt("Public page URL slug (free-exams.html? no, this becomes /free-exams.html#"+suggested+")",x.public_slug||suggested);if(slug===null)return;
+            const slug=prompt("Public exam URL slug (used in the free exam catalogue)",x.public_slug||suggested);if(slug===null)return;
             const max=prompt("Maximum attempts per student (1–10)",String(x.max_attempts||1));if(max===null)return;
             const mode=prompt("Result mode: immediate or after_review",x.results_mode||"immediate");if(mode===null)return;
             const starts=prompt("Public exam opening date/time (optional ISO format, e.g. 2026-11-25T09:00:00)",x.starts_at||"");if(starts===null)return;
