@@ -47,7 +47,18 @@ export async function handleStudyRequest(request,env,user,account,path,method){
   }
   if(path==="/api/admin/teacher-leaves"&&admin&&method==="GET"){
     const r=await env.DB.prepare("SELECT l.*,u.full_name teacher_name,u.email teacher_email FROM teacher_leaves l JOIN users u ON u.id=l.teacher_id ORDER BY CASE l.status WHEN 'pending' THEN 0 ELSE 1 END,l.start_date DESC LIMIT 300").all();
-    return json({success:true,leaves:r.results||[]},200,request);
+    const leaves=[];
+    for(const l of r.results||[]){
+      const [batches,classes]=await Promise.all([
+        env.DB.prepare("SELECT b.id batch_id,b.batch_name,b.class_id,b.subject_id,s.subject_name FROM batch_teachers bt JOIN batches b ON b.id=bt.batch_id LEFT JOIN subjects s ON s.id=b.subject_id WHERE bt.teacher_id=? AND b.status='active'").bind(l.teacher_id).all(),
+        env.DB.prepare("SELECT ta.class_id,ta.subject_id,c.class_name,s.subject_name FROM teacher_assignments ta LEFT JOIN classes c ON c.id=ta.class_id LEFT JOIN subjects s ON s.id=ta.subject_id WHERE ta.teacher_id=?").bind(l.teacher_id).all()
+      ]);
+      leaves.push({...l,coverage_scopes:[
+        ...(batches.results||[]).map(x=>({scope_type:"batch",batch_id:x.batch_id,label:x.batch_name+" · "+x.subject_name})),
+        ...(classes.results||[]).map(x=>({scope_type:"class_subject",class_id:x.class_id,subject_id:x.subject_id,label:x.class_name+" · "+x.subject_name}))
+      ]});
+    }
+    return json({success:true,leaves},200,request);
   }
   const reviewLeave=path.match(/^\\/api\\/admin\\/teacher-leaves\\/([0-9a-f-]+)\\/review$/i);
   if(reviewLeave&&admin&&method==="POST"){
