@@ -497,8 +497,21 @@ export default {
      if (account.role === "teacher") {
        if (path === "/api/teacher/questions" && method === "GET") {
          const rows = await env.DB.prepare(
-           "SELECT q.id,q.question_type,q.question_text,q.topic,q.difficulty,q.default_marks,q.subject_id,q.class_id,q.created_at,(SELECT COUNT(*) FROM question_options qo WHERE qo.question_id=q.id) option_count FROM questions q WHERE q.teacher_id=? AND q.status='active' ORDER BY q.created_at DESC"
-         ).bind(user.id).all();
+           `SELECT DISTINCT q.id,q.question_type,q.question_text,q.topic,q.difficulty,q.default_marks,q.subject_id,q.class_id,q.teacher_id owner_teacher_id,q.created_at,(SELECT COUNT(*) FROM question_options qo WHERE qo.question_id=q.id) option_count
+            FROM questions q
+            WHERE q.status='active' AND (
+              q.teacher_id=? OR EXISTS (
+                SELECT 1 FROM teacher_coverage_assignments tc
+                LEFT JOIN batches cb ON cb.id=tc.batch_id
+                WHERE tc.status='active' AND tc.substitute_teacher_id=? AND tc.primary_teacher_id=q.teacher_id
+                  AND date('now','+5 hours','+30 minutes') BETWEEN tc.effective_from AND tc.effective_to
+                  AND (
+                    (tc.scope_type='batch' AND (q.class_id IS NULL OR q.class_id=cb.class_id) AND (q.subject_id IS NULL OR q.subject_id=cb.subject_id))
+                    OR (tc.scope_type='class_subject' AND (q.class_id IS NULL OR q.class_id=tc.class_id) AND q.subject_id=tc.subject_id)
+                  )
+              )
+            ) ORDER BY q.created_at DESC`
+         ).bind(user.id,user.id).all();
          return reply({success:true,questions:rows.results||[]},200,request);
        }
 
@@ -567,8 +580,27 @@ export default {
          ).bind(batchId,user.id,user.id).first();
          if(!batch) return reply({error:"Select an active batch assigned to you."},403,request);
          const marksRows=await env.DB.prepare(
-           `SELECT id,default_marks FROM questions WHERE teacher_id=? AND status='active' AND id IN (${questionIds.map(()=>"?").join(",")}) AND (class_id IS NULL OR class_id=?) AND (subject_id IS NULL OR subject_id=?)`
-         ).bind(user.id,...questionIds,batch.class_id,batch.subject_id).all();
+           `SELECT q.id,q.default_marks FROM questions q
+            WHERE q.status='active' AND q.id IN (${questionIds.map(()=>"?").join(",")})
+              AND (q.class_id IS NULL OR q.class_id=?) AND (q.subject_id IS NULL OR q.subject_id=?)
+              AND (
+                q.teacher_id=? OR EXISTS (
+                  SELECT 1 FROM teacher_coverage_assignments tc
+                  WHERE tc.status='active' AND tc.substitute_teacher_id=? AND tc.primary_teacher_id=q.teacher_id
+                    AND date('now','+5 hours','+30 minutes') BETWEEN tc.effective_from AND tc.effective_to
+                    AND (
+                      (tc.scope_type='batch' AND tc.batch_id=?)
+                      OR (tc.scope_type='class_subject' AND tc.class_id=? AND tc.subject_id=?
+                        AND NOT EXISTS (
+                          SELECT 1 FROM teacher_coverage_assignments tb
+                          WHERE tb.status='active' AND tb.scope_type='batch' AND tb.batch_id=?
+                            AND date('now','+5 hours','+30 minutes') BETWEEN tb.effective_from AND tb.effective_to
+                        )
+                      )
+                    )
+                )
+              )`
+         ).bind(...questionIds,batch.class_id,batch.subject_id,user.id,user.id,batchId,batch.class_id,batch.subject_id,batchId).all();
          if((marksRows.results||[]).length!==questionIds.length) return reply({error:"One or more selected questions are unavailable or do not match this batch."},400,request);
          const totalMarks=marksRows.results.reduce((sum,q)=>sum+Number(q.default_marks||0),0);
          if(passMarks!==null && passMarks>totalMarks) return reply({error:"Pass marks cannot exceed total marks."},400,request);
