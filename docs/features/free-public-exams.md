@@ -14,7 +14,7 @@ This is an addition to the existing public website and portal. It is not a repla
 2. Student browses only exams explicitly published for public access.
 3. Before starting, student provides name, mobile number and class; email and parent name are optional. A clear privacy notice must be accepted. Marketing consent is separate and unchecked by default.
 4. Student receives a one-time attempt token and begins a timed exam.
-5. Questions, options and media are delivered without correct-answer flags or explanations.
+5. Question text and answer options are delivered without correct-answer flags or explanations. Public question-media delivery is a follow-on item.
 6. Answers are saved server-side. The server enforces the deadline and attempt limit.
 7. Objective-only exams can show an instant score and explanations. Exams containing numerical/descriptive questions that need manual marking remain pending until a teacher/admin evaluates them.
 8. Student can view only the result belonging to their valid attempt token.
