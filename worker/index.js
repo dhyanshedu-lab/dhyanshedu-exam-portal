@@ -206,7 +206,7 @@ export default {
 
          "SELECT id,full_name,email,role,status FROM users WHERE id=? AND status='approved' AND deleted_at IS NULL"
 
-       ).bind(user.id).first();
+       ).bind(user.id,user.id).first();
 
        if (!profile) return reply({error:"Account is pending approval or inactive"},403,request);
 
@@ -316,7 +316,7 @@ export default {
              ? env.DB.prepare("SELECT COUNT(*) total FROM study_materials sm JOIN batches b ON b.id=sm.batch_id WHERE sm.deleted_at IS NULL AND (sm.teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=sm.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})").bind(user.id,user.id,user.id).first()
              : env.DB.prepare("SELECT COUNT(*) total FROM study_materials sm WHERE sm.deleted_at IS NULL AND (sm.visibility='all_students' OR EXISTS (SELECT 1 FROM batch_students bs WHERE bs.student_id=? AND bs.status='active' AND bs.batch_id=sm.batch_id))").bind(user.id).first(),
            isTeacher
-             ? env.DB.prepare("SELECT COUNT(*) total FROM live_classes lc WHERE lc.teacher_id=? AND lc.status IN ('scheduled','live')").bind(user.id).first()
+             ? env.DB.prepare("SELECT COUNT(*) total FROM live_classes lc WHERE lc.status IN ('scheduled','live') AND (lc.teacher_id=? OR EXISTS (SELECT 1 FROM teacher_coverage_assignments tc WHERE tc.status='active' AND tc.substitute_teacher_id=? AND date(lc.starts_at) BETWEEN tc.effective_from AND tc.effective_to AND ((tc.scope_type='batch' AND tc.batch_id=lc.batch_id) OR (tc.scope_type='class_subject' AND tc.class_id=lc.class_id AND tc.subject_id=lc.subject_id AND NOT EXISTS (SELECT 1 FROM teacher_coverage_assignments tb WHERE tb.status='active' AND tb.scope_type='batch' AND tb.batch_id=lc.batch_id AND date(lc.starts_at) BETWEEN tb.effective_from AND tb.effective_to)))))").bind(user.id).first()
              : env.DB.prepare("SELECT COUNT(*) total FROM live_classes lc WHERE lc.status IN ('scheduled','live') AND (EXISTS (SELECT 1 FROM batch_students bs WHERE bs.student_id=? AND bs.status='active' AND bs.batch_id=lc.batch_id) OR (lc.batch_id IS NULL AND EXISTS (SELECT 1 FROM batch_students bs JOIN batches b ON b.id=bs.batch_id WHERE bs.student_id=? AND bs.status='active' AND b.class_id=lc.class_id)))").bind(user.id,user.id).first()
          ]);
          return reply({success:true,role:account.role,stats:{
@@ -348,7 +348,7 @@ export default {
 
        if (path === "/api/my/live-classes" && method === "GET") {
          const result = isTeacher
-           ? await env.DB.prepare("SELECT DISTINCT lc.id,lc.title,lc.description,lc.batch_id,lc.class_id,lc.subject_id,lc.meeting_provider,lc.meeting_url,lc.starts_at,lc.ends_at,lc.status,b.batch_name FROM live_classes lc LEFT JOIN batches b ON b.id=lc.batch_id WHERE lc.teacher_id=? OR EXISTS (SELECT 1 FROM teacher_coverage_assignments tc WHERE tc.status='active' AND tc.substitute_teacher_id=? AND date(lc.starts_at) BETWEEN tc.effective_from AND tc.effective_to AND ((tc.scope_type='batch' AND tc.batch_id=lc.batch_id) OR (tc.scope_type='class_subject' AND tc.class_id=lc.class_id AND tc.subject_id=lc.subject_id))) ORDER BY lc.starts_at").bind(user.id,user.id).all()
+           ? await env.DB.prepare("SELECT DISTINCT lc.id,lc.title,lc.description,lc.batch_id,lc.class_id,lc.subject_id,lc.meeting_provider,lc.meeting_url,lc.starts_at,lc.ends_at,lc.status,b.batch_name FROM live_classes lc LEFT JOIN batches b ON b.id=lc.batch_id WHERE lc.teacher_id=? OR EXISTS (SELECT 1 FROM teacher_coverage_assignments tc WHERE tc.status='active' AND tc.substitute_teacher_id=? AND date(lc.starts_at) BETWEEN tc.effective_from AND tc.effective_to AND ((tc.scope_type='batch' AND tc.batch_id=lc.batch_id) OR (tc.scope_type='class_subject' AND tc.class_id=lc.class_id AND tc.subject_id=lc.subject_id AND NOT EXISTS (SELECT 1 FROM teacher_coverage_assignments tb WHERE tb.status='active' AND tb.scope_type='batch' AND tb.batch_id=lc.batch_id AND date(lc.starts_at) BETWEEN tb.effective_from AND tb.effective_to)))) ORDER BY lc.starts_at").bind(user.id,user.id).all()
            : await env.DB.prepare("SELECT DISTINCT lc.id,lc.title,lc.description,lc.batch_id,lc.class_id,lc.subject_id,lc.meeting_provider,lc.meeting_url,lc.starts_at,lc.ends_at,lc.status,b.batch_name,t.full_name teacher_name FROM live_classes lc LEFT JOIN batches b ON b.id=lc.batch_id LEFT JOIN users t ON t.id=lc.teacher_id WHERE lc.status<>'cancelled' AND (EXISTS (SELECT 1 FROM batch_students bs WHERE bs.student_id=? AND bs.status='active' AND bs.batch_id=lc.batch_id) OR (lc.batch_id IS NULL AND EXISTS (SELECT 1 FROM batch_students bs JOIN batches b ON b.id=bs.batch_id WHERE bs.student_id=? AND bs.status='active' AND b.class_id=lc.class_id))) ORDER BY lc.starts_at").bind(user.id,user.id).all();
          return reply({success:true,live_classes:result.results||[]},200,request);
        }
@@ -631,7 +631,7 @@ export default {
        if(evaluateMatch && method==="POST"){
          const b=await body(request), attemptId=evaluateMatch[1];
          const attempt=await env.DB.prepare(
-           "SELECT ea.id,ea.status,ea.exam_id,ea.student_id,e.total_marks,e.pass_marks FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id WHERE ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})"
+           "SELECT ea.id,ea.status,ea.exam_id,ea.student_id,e.total_marks,e.pass_marks FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id JOIN batches b ON b.id=e.batch_id WHERE ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})"
          ).bind(attemptId,user.id,user.id,user.id).first();
          if(!attempt) return reply({error:"Evaluation not found or you are not assigned to this exam."},404,request);
          if(!["submitted","evaluated"].includes(attempt.status)) return reply({error:"Only submitted attempts can be evaluated."},409,request);
@@ -668,7 +668,7 @@ export default {
        const publishEvaluationMatch=path.match(/^\/api\/teacher\/evaluations\/([0-9a-f-]+)\/publish$/i);
        if(publishEvaluationMatch && method==="POST"){
          const attempt=await env.DB.prepare(
-           "SELECT ea.id,ea.status,r.published_at FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id JOIN results r ON r.attempt_id=ea.id WHERE ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})"
+           "SELECT ea.id,ea.status,r.published_at FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id JOIN batches b ON b.id=e.batch_id JOIN results r ON r.attempt_id=ea.id WHERE ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})"
          ).bind(publishEvaluationMatch[1],user.id,user.id,user.id).first();
          if(!attempt) return reply({error:"Result not found or you are not assigned to this exam."},404,request);
          if(attempt.status!=="evaluated") return reply({error:"Complete evaluation before publishing this result."},409,request);
