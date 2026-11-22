@@ -35,7 +35,7 @@ export const isCoverageComplete = ({ batches = [], classes = [], coverage = [] }
       batchScopes.add(key);
     } else if (item.scope_type === "class_subject") {
       const key = `${String(item.class_id ?? "")}:${String(item.subject_id ?? "")}`;
-      if (key === ":" || classScopes.has(key)) return false;
+      if (String(item.class_id ?? "") === "" || String(item.subject_id ?? "") === "" || classScopes.has(key)) return false;
       classScopes.add(key);
     } else {
       return false;
