@@ -792,9 +792,26 @@ async function loadStats() {
     $("#student-count").textContent = stats.students;
     $("#exam-count").textContent = stats.exams;
     $("#attempt-count").textContent = stats.attempts;
+    $("#overview-classes").textContent = stats.classes ?? 0;
+    $("#overview-subjects").textContent = stats.subjects ?? 0;
+    $("#overview-batches").textContent = stats.batches ?? 0;
+    $("#overview-exams").textContent = stats.exams ?? 0;
+    $("#overview-attempts").textContent = stats.attempts ?? 0;
+    $("#overview-teachers").textContent = stats.teachers ?? 0;
+
+    try {
+      const { teachers } = await api("/api/teachers");
+      const approved = teachers.filter(t => t.status === "approved").length;
+      const pending = teachers.filter(t => t.status === "pending").length;
+      $("#overview-teacher-approved").textContent = approved;
+      $("#overview-teacher-pending").textContent = pending;
+    } catch (_) {
+      $("#overview-teacher-approved").textContent = "—";
+      $("#overview-teacher-pending").textContent = "—";
+    }
 
     $("#dashboard-message").textContent =
-      "Connected to DhyanshEdu backend.";
+      "Connected to DhyanshEdu backend. Overview counts are live.";
 
   } catch (e) {
     $("#dashboard-message").textContent = e.message;
@@ -1409,6 +1426,11 @@ document.addEventListener("submit",async e=>{
 });
 
 document.addEventListener("click",async e=>{
+  const overviewNav = e.target.closest("[data-page]");
+  if (overviewNav && overviewNav.closest("#overview-page")) {
+    page(overviewNav.dataset.page);
+    return;
+  }
   const save=e.target.closest(".student-save-answer");
   if(save){const card=save.closest(".student-question");if(card)await saveStudentAnswer(card);return;}
   if(e.target.id==="student-submit-exam"){await submitStudentExam(false);}
