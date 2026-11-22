@@ -415,6 +415,7 @@ CREATE TABLE IF NOT EXISTS public_assessment_registrations (
     privacy_consent_at TEXT NOT NULL,
     registered_at TEXT NOT NULL DEFAULT (datetime('now')),
     marketing_consent INTEGER NOT NULL DEFAULT 0 CHECK (marketing_consent IN (0,1)),
+    identity_key TEXT NOT NULL UNIQUE,
     converted_enquiry_id TEXT REFERENCES enquiries(id),
     converted_student_id TEXT REFERENCES users(id)
 );
