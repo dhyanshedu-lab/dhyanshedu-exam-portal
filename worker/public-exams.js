@@ -135,7 +135,7 @@ export async function handlePublicExamRequest(request, env, path, method) {
       const regId = existing?.id || registrationId;
       if (!existing) {
         await env.DB.prepare(
-          "INSERT INTO public_assessment_registrations(id,student_name,parent_name,phone,email,class_label,privacy_notice_version,privacy_consent_at,marketing_consent,identity_key) VALUES(?,?,?,?,?,?,'2026-11-v1',?,?,?,?,?)"
+          "INSERT INTO public_assessment_registrations(id,student_name,parent_name,phone,email,class_label,privacy_notice_version,privacy_consent_at,marketing_consent,identity_key) VALUES(?,?,?,?,?,?,'2026-11-v1',?,?,?)"
         ).bind(regId, name, parent || null, phone, email || null, classLabel, started, marketingConsent ? 1 : 0, identityKey).run();
       } else {
         await env.DB.prepare(
