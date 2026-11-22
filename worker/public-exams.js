@@ -338,6 +338,28 @@ export async function handleAdminPublicExamRequest(request, env, path, method, u
     return json({ success: true, attempts: rows.results || [] }, 200, request);
   }
 
+  const adminAttemptMatch = path.match(/^\/api\/admin\/public-attempts\/([0-9a-f-]+)$/i);
+  if (adminAttemptMatch && method === "GET") {
+    const attempt = await env.DB.prepare(
+      "SELECT a.id,a.exam_id,a.registration_id,a.attempt_number,a.started_at,a.submitted_at,a.expires_at,a.status,a.score,a.total_marks,a.percentage,a.result_released_at,r.student_name,r.phone,r.email,r.class_label,e.title exam_title FROM public_assessment_attempts a JOIN public_assessment_registrations r ON r.id=a.registration_id JOIN exams e ON e.id=a.exam_id WHERE a.id=?"
+    ).bind(adminAttemptMatch[1]).first();
+    if (!attempt) return fail("Public attempt not found.", 404, request);
+    const [questions, answers, options] = await Promise.all([
+      env.DB.prepare("SELECT eq.id exam_question_id,eq.marks,eq.negative_marks,eq.sort_order,q.question_type,q.question_text,q.explanation FROM exam_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.sort_order").bind(attempt.exam_id).all(),
+      env.DB.prepare("SELECT exam_question_id,answer_text,selected_option_ids,is_correct,marks_awarded,teacher_feedback FROM public_assessment_answers WHERE public_attempt_id=?").bind(attempt.id).all(),
+      env.DB.prepare("SELECT qo.id,qo.option_label,qo.option_text,qo.is_correct,eq.id exam_question_id FROM exam_questions eq JOIN question_options qo ON qo.question_id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.sort_order,qo.sort_order").bind(attempt.exam_id).all()
+    ]);
+    const answerMap = new Map((answers.results || []).map(x => [x.exam_question_id, x]));
+    return json({ success: true, attempt, questions: (questions.results || []).map(q => ({
+      ...q, answer: answerMap.get(q.exam_question_id)?.answer_text || "",
+      selected_option_ids: JSON.parse(answerMap.get(q.exam_question_id)?.selected_option_ids || "[]"),
+      is_correct: answerMap.get(q.exam_question_id)?.is_correct ?? null,
+      marks_awarded: answerMap.get(q.exam_question_id)?.marks_awarded ?? null,
+      teacher_feedback: answerMap.get(q.exam_question_id)?.teacher_feedback || "",
+      options: (options.results || []).filter(o => o.exam_question_id === q.exam_question_id)
+    })) }, 200, request);
+  }
+
   const gradeMatch = path.match(/^\/api\/admin\/public-attempts\/([0-9a-f-]+)\/evaluate$/i);
   if (gradeMatch && method === "POST") {
     const b = await request.json().catch(() => ({}));
@@ -359,8 +381,8 @@ export async function handleAdminPublicExamRequest(request, env, path, method, u
         return fail("Each grade must reference a unique written/numerical question and be within its mark limit.", 400, request);
       seen.add(qid);
       writes.push(env.DB.prepare(
-        "UPDATE public_assessment_answers SET marks_awarded=?,teacher_feedback=?,evaluated_by=?,evaluated_at=? WHERE public_attempt_id=? AND exam_question_id=?"
-      ).bind(marks, clean(g.teacher_feedback, 2000) || null, user.id, nowIso(), attempt.id, qid));
+        "INSERT INTO public_assessment_answers(id,public_attempt_id,exam_question_id,marks_awarded,teacher_feedback,evaluated_by,evaluated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(public_attempt_id,exam_question_id) DO UPDATE SET marks_awarded=excluded.marks_awarded,teacher_feedback=excluded.teacher_feedback,evaluated_by=excluded.evaluated_by,evaluated_at=excluded.evaluated_at"
+      ).bind(uuid(), attempt.id, qid, marks, clean(g.teacher_feedback, 2000) || null, user.id, nowIso()));
     }
     if (seen.size !== allowed.size) return fail("Grade every written/numerical question before completing evaluation.", 400, request);
     const auto = await env.DB.prepare(
