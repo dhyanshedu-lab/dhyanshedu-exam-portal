@@ -1,0 +1,27 @@
+name: Worker QA
+
+on:
+  push:
+    branches:
+      - qa/worker-source-audit-2026-11-22
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  worker-qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check Worker module syntax
+        working-directory: worker
+        run: |
+          node --check index.js
+          node --check study.js
+          node --check fees.js
+      - name: Run leave-date tests
+        working-directory: worker
+        run: node --test tests/*.test.mjs
