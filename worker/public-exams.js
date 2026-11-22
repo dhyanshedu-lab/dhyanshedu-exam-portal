@@ -33,7 +33,9 @@ const nowIso = () => new Date().toISOString();
 const isOpen = row => {
   const now = Date.now();
   return (!row.starts_at || new Date(row.starts_at).getTime() <= now) &&
-    (!row.ends_at || new Date(row.ends_at).getTime() >= now);
+    (!row.ends_at || new Date(row.ends_at).getTime() >= now) &&
+    (!row.exam_starts_at || new Date(row.exam_starts_at).getTime() <= now) &&
+    (!row.exam_ends_at || new Date(row.exam_ends_at).getTime() >= now);
 };
 const attemptDeadline = (startedAt, duration, examEnd) => Math.min(
   new Date(startedAt).getTime() + Number(duration) * 60000,
@@ -45,7 +47,7 @@ const audit = (env, actor, action, entity, details) => env.DB.prepare(
 
 async function getPublishedExam(env, slug) {
   return env.DB.prepare(
-    "SELECT p.id publication_id,p.public_slug,p.max_attempts,p.results_mode,p.starts_at public_starts_at,p.ends_at public_ends_at,e.id,e.title,e.description,e.duration_minutes,e.total_marks,e.pass_marks,e.status exam_status,e.ends_at exam_ends_at,(SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id=e.id) question_count FROM public_exam_publications p JOIN exams e ON e.id=p.exam_id WHERE p.public_slug=? AND p.status='published'"
+    "SELECT p.id publication_id,p.public_slug,p.max_attempts,p.results_mode,p.starts_at public_starts_at,p.ends_at public_ends_at,e.id,e.title,e.description,e.duration_minutes,e.total_marks,e.pass_marks,e.status exam_status,e.starts_at exam_starts_at,e.ends_at exam_ends_at,(SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id=e.id) question_count FROM public_exam_publications p JOIN exams e ON e.id=p.exam_id WHERE p.public_slug=? AND p.status='published'"
   ).bind(slug).first();
 }
 async function validateAttempt(request, env, attemptId) {
@@ -78,9 +80,9 @@ export async function handlePublicExamRequest(request, env, path, method) {
 
   if (path === "/api/public/exams" && method === "GET") {
     const rows = await env.DB.prepare(
-      "SELECT p.public_slug,p.max_attempts,p.results_mode,p.starts_at,p.ends_at,e.title,e.description,e.duration_minutes,e.total_marks,(SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id=e.id) question_count FROM public_exam_publications p JOIN exams e ON e.id=p.exam_id WHERE p.status='published' AND e.status IN ('published','scheduled') ORDER BY COALESCE(p.starts_at,p.published_at) DESC LIMIT 100"
+      "SELECT p.public_slug,p.max_attempts,p.results_mode,p.starts_at,p.ends_at,e.title,e.description,e.duration_minutes,e.total_marks,e.starts_at exam_starts_at,e.ends_at exam_ends_at,(SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id=e.id) question_count FROM public_exam_publications p JOIN exams e ON e.id=p.exam_id WHERE p.status='published' AND e.status IN ('published','scheduled') ORDER BY COALESCE(p.starts_at,p.published_at) DESC LIMIT 100"
     ).all();
-    const exams = (rows.results || []).filter(isOpen).map(x => ({
+    const exams = (rows.results || []).filter(x => isOpen({ ...x, starts_at: x.starts_at, ends_at: x.ends_at })).map(x => ({
       slug: x.public_slug, title: x.title, description: x.description,
       duration_minutes: x.duration_minutes, total_marks: x.total_marks,
       question_count: x.question_count, max_attempts: x.max_attempts,
@@ -92,7 +94,7 @@ export async function handlePublicExamRequest(request, env, path, method) {
   const detailMatch = path.match(/^\/api\/public\/exams\/([a-z0-9-]+)$/i);
   if (detailMatch && method === "GET") {
     const exam = await getPublishedExam(env, detailMatch[1]);
-    if (!exam || !isOpen({ starts_at: exam.public_starts_at, ends_at: exam.public_ends_at }) ||
+    if (!exam || !isOpen({ starts_at: exam.public_starts_at, ends_at: exam.public_ends_at, exam_starts_at: exam.exam_starts_at, exam_ends_at: exam.exam_ends_at }) ||
         !["published", "scheduled"].includes(exam.exam_status)) return fail("This free exam is not available.", 404, request);
     return json({ success: true, exam: {
       slug: exam.public_slug, title: exam.title, description: exam.description,
@@ -116,7 +118,7 @@ export async function handlePublicExamRequest(request, env, path, method) {
       return fail("Enter your name, valid mobile number and class, and accept the privacy notice.", 400, request);
     }
     const exam = await getPublishedExam(env, registerMatch[1]);
-    if (!exam || !isOpen({ starts_at: exam.public_starts_at, ends_at: exam.public_ends_at }) ||
+    if (!exam || !isOpen({ starts_at: exam.public_starts_at, ends_at: exam.public_ends_at, exam_starts_at: exam.exam_starts_at, exam_ends_at: exam.exam_ends_at }) ||
         !["published", "scheduled"].includes(exam.exam_status)) return fail("This free exam is not available.", 404, request);
     if (!Number(exam.question_count)) return fail("This exam does not have any questions yet.", 409, request);
 
@@ -364,10 +366,10 @@ export async function handleAdminPublicExamRequest(request, env, path, method, u
   if (gradeMatch && method === "POST") {
     const b = await request.json().catch(() => ({}));
     const attempt = await env.DB.prepare(
-      "SELECT a.id,a.exam_id,a.status,e.total_marks FROM public_assessment_attempts a JOIN exams e ON e.id=a.exam_id WHERE a.id=?"
+      "SELECT a.id,a.exam_id,a.status,a.result_released_at,e.total_marks FROM public_assessment_attempts a JOIN exams e ON e.id=a.exam_id WHERE a.id=?"
     ).bind(gradeMatch[1]).first();
     if (!attempt) return fail("Public attempt not found.", 404, request);
-    if (!["submitted", "evaluated"].includes(attempt.status)) return fail("Only submitted public attempts can be evaluated.", 409, request);
+    if (attempt.status !== "submitted" || attempt.result_released_at) return fail("Only pending, unreleased submissions can be evaluated.", 409, request);
     const grades = Array.isArray(b.grades) ? b.grades : [];
     if (grades.length > 200) return fail("Too many grades were supplied.", 400, request);
     const manual = await env.DB.prepare(
@@ -388,7 +390,7 @@ export async function handleAdminPublicExamRequest(request, env, path, method, u
     const auto = await env.DB.prepare(
       "SELECT COALESCE(SUM(COALESCE(marks_awarded,0)),0) score FROM public_assessment_answers WHERE public_attempt_id=?"
     ).bind(attempt.id).first();
-    const score = Number(auto?.score || 0), total = Number(attempt.total_marks || 0);
+    const score = Math.max(0, Number(auto?.score || 0)), total = Number(attempt.total_marks || 0);
     const percentage = total > 0 ? Math.round(score / total * 10000) / 100 : 0;
     writes.push(env.DB.prepare(
       "UPDATE public_assessment_attempts SET status='evaluated',score=?,total_marks=?,percentage=? WHERE id=?"
