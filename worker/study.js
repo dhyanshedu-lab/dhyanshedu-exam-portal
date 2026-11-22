@@ -109,7 +109,7 @@ export async function handleStudyRequest(request,env,user,account,path,method){
         if(!teacherRow)return fail("Every substitute must be an approved active teacher.",400,request);
         if(scope==="batch"){
           const bid=txt(c.batch_id,80);
-          const primary=await env.DB.prepare("SELECT b.id,b.class_id,b.subject_id FROM batches b WHERE b.id=? AND b.status='active' AND (EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=b.id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})").bind(bid,leave.teacher_id).first();
+          const primary=await env.DB.prepare("SELECT b.id,b.class_id,b.subject_id FROM batches b JOIN batch_teachers bt ON bt.batch_id=b.id WHERE b.id=? AND bt.teacher_id=? AND b.status='active'").bind(bid,leave.teacher_id).first();
           const qualified=primary?await env.DB.prepare("SELECT 1 ok WHERE EXISTS (SELECT 1 FROM teacher_assignments WHERE teacher_id=? AND class_id=? AND subject_id=?) OR EXISTS (SELECT 1 FROM batch_teachers WHERE teacher_id=? AND batch_id=?)").bind(sub,primary.class_id,primary.subject_id,sub,bid).first():null;
           if(!primary||!qualified)return fail("Substitute must be assigned to the batch's class and subject or already assigned to this batch.",400,request);
           c._batch=primary;
@@ -157,7 +157,7 @@ export async function handleStudyRequest(request,env,user,account,path,method){
   const materialDownload=path.match(/^\/api\/materials\/([0-9a-f-]+)\/download$/i);
   if(materialDownload&&method==="GET"){
     const row=teacher
-      ? await env.DB.prepare("SELECT r2_object_key,file_name,mime_type FROM study_materials WHERE id=? AND deleted_at IS NULL AND (teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=study_materials.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("study_materials")})").bind(materialDownload[1],user.id,user.id,user.id).first()
+      ? await env.DB.prepare("SELECT study_materials.r2_object_key,study_materials.file_name,study_materials.mime_type FROM study_materials JOIN batches b ON b.id=study_materials.batch_id WHERE study_materials.id=? AND study_materials.deleted_at IS NULL AND (study_materials.teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=study_materials.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})").bind(materialDownload[1],user.id,user.id,user.id).first()
       : student?await env.DB.prepare("SELECT r2_object_key,file_name,mime_type FROM study_materials WHERE id=? AND deleted_at IS NULL AND (visibility='all_students' OR EXISTS (SELECT 1 FROM batch_students bs WHERE bs.batch_id=study_materials.batch_id AND bs.student_id=? AND bs.status='active'))").bind(materialDownload[1],user.id).first():null;
     return download(env,request,row);
   }
