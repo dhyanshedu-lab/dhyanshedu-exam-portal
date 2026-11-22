@@ -130,6 +130,19 @@ export async function handleStudyRequest(request,env,user,account,path,method){
     if(batchConflict)return fail("Batch scheduling conflict: this batch already has another class during the selected time.",409,request);
     const id=crypto.randomUUID();await env.DB.prepare("INSERT INTO live_classes(id,title,description,batch_id,teacher_id,class_id,subject_id,meeting_provider,meeting_url,starts_at,ends_at,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,'scheduled')").bind(id,title,txt(b.description,2000)||null,bid,tid,batch.class_id,batch.subject_id,provider,meeting,startsAt,endsAt).run();return json({success:true,id},201,request);
   }
+  const liveAdminCancel=path.match(/^\/api\/admin\/live-classes\/([0-9a-f-]+)\/status$/i);
+  if(liveAdminCancel&&method==="PATCH"&&account.role==="admin"){
+    const b=await request.json().catch(()=>({}));
+    if(b.status!=="cancelled")return fail("Admin can only cancel a scheduled class from this action.",400,request);
+    const cls=await env.DB.prepare("SELECT id,title,status FROM live_classes WHERE id=?").bind(liveAdminCancel[1]).first();
+    if(!cls)return fail("Class not found.",404,request);
+    if(cls.status!=="scheduled")return fail("Only scheduled classes can be cancelled. Live or completed classes must be handled through their normal workflow.",409,request);
+    await env.DB.batch([
+      env.DB.prepare("UPDATE live_classes SET status='cancelled',updated_at=datetime('now') WHERE id=? AND status='scheduled'").bind(cls.id),
+      env.DB.prepare("INSERT INTO audit_logs(id,actor_id,action,entity_type,entity_id,details) VALUES(?,?,'live_class_cancelled','live_class',?,?)").bind(crypto.randomUUID(),user.id,cls.id,JSON.stringify({title:cls.title}))
+    ]);
+    return json({success:true,message:"Scheduled class cancelled."},200,request);
+  }
   const liveAdminAttendance=path.match(/^\/api\/admin\/live-classes\/([0-9a-f-]+)\/attendance$/i);
   if(liveAdminAttendance&&method==="GET"&&account.role==="admin"){
     const cls=await env.DB.prepare("SELECT lc.id,lc.title,lc.batch_id,b.batch_name,u.full_name teacher_name FROM live_classes lc JOIN batches b ON b.id=lc.batch_id JOIN users u ON u.id=lc.teacher_id WHERE lc.id=?").bind(liveAdminAttendance[1]).first();if(!cls)return fail("Class not found.",404,request);
