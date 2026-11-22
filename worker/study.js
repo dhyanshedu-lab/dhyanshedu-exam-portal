@@ -25,6 +25,28 @@ export const teacherCoveragePredicate = (batchAlias) => `EXISTS (
     )
 )`;
 
+export const isCoverageComplete = ({ batches = [], classes = [], coverage = [] }) => {
+  const batchScopes = new Set();
+  const classScopes = new Set();
+  for (const item of coverage) {
+    if (item.scope_type === "batch") {
+      const key = String(item.batch_id ?? "");
+      if (!key || batchScopes.has(key)) return false;
+      batchScopes.add(key);
+    } else if (item.scope_type === "class_subject") {
+      const key = `${String(item.class_id ?? "")}:${String(item.subject_id ?? "")}`;
+      if (key === ":" || classScopes.has(key)) return false;
+      classScopes.add(key);
+    } else {
+      return false;
+    }
+  }
+  const classKey = (item) => `${String(item.class_id ?? "")}:${String(item.subject_id ?? "")}`;
+  if (classes.some(item => !classScopes.has(classKey(item)))) return false;
+  if (batches.some(item => !batchScopes.has(String(item.id ?? "")) && !classScopes.has(classKey(item)))) return false;
+  return true;
+};
+
 const txt=(v,n=160)=>String(v??"").trim().slice(0,n);
 const json=(data,status,request)=>{const origin=request.headers.get("Origin")||"";const headers={"Content-Type":"application/json","Cache-Control":"no-store","Vary":"Origin"};if(["https://dhyanshedu-lab.github.io","https://dhyanshedu-exam-portal.dhyanshedu.workers.dev","https://dhyanshedu-exam-portal.pages.dev","https://dhyanshedu.com","https://www.dhyanshedu.com"].includes(origin))headers["Access-Control-Allow-Origin"]=origin;return new Response(JSON.stringify(data),{status,headers});};
 const fail=(message,status=400,request)=>json({error:message},status,request);
@@ -119,6 +141,13 @@ export async function handleStudyRequest(request,env,user,account,path,method){
           const qualified=await env.DB.prepare("SELECT 1 FROM teacher_assignments WHERE teacher_id=? AND class_id=? AND subject_id=?").bind(sub,classId,subjectId).first();
           if(!primary||!qualified)return fail("Both primary and substitute must be assigned to this class and subject.",400,request);
         }
+      }
+      const [requiredBatches,requiredClasses]=await Promise.all([
+        env.DB.prepare("SELECT b.id,b.class_id,b.subject_id FROM batch_teachers bt JOIN batches b ON b.id=bt.batch_id WHERE bt.teacher_id=? AND b.status='active'").bind(leave.teacher_id).all(),
+        env.DB.prepare("SELECT class_id,subject_id FROM teacher_assignments WHERE teacher_id=?").bind(leave.teacher_id).all()
+      ]);
+      if(!isCoverageComplete({batches:requiredBatches.results||[],classes:requiredClasses.results||[],coverage})){
+        return fail("Provide substitute coverage for every assigned class/subject and batch before approving leave.",400,request);
       }
       const overlap=await env.DB.prepare("SELECT id FROM teacher_leaves WHERE teacher_id=? AND id<>? AND status='approved' AND start_date<=? AND end_date>=?").bind(leave.teacher_id,leave.id,leave.end_date,leave.start_date).first();
       if(overlap)return fail("This leave overlaps another approved leave.",409,request);
