@@ -119,7 +119,7 @@ export async function handlePublicExamRequest(request, env, path, method) {
 
   const registerMatch = path.match(/^\/api\/public\/exams\/([a-z0-9-]+)\/register$/i);
   if (registerMatch && method === "POST") {
-    const limited = await enforceRateLimit(request, env, "register:" + registerMatch[1], 5, 3600);
+    const limited = await enforceRateLimit(request, env, "register:" + registerMatch[1], 60, 3600);
     if (limited) return limited;
     const b = await request.json().catch(() => ({}));
     const name = clean(b.student_name, 120), parent = clean(b.parent_name, 120);
