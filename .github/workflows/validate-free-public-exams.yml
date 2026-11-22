@@ -34,8 +34,9 @@ jobs:
           ddl = source[start:end]
           db = sqlite3.connect(":memory:")
           db.execute("PRAGMA foreign_keys = ON")
-          for table in ("users", "curricula", "exam_pathways", "enquiries", "exams", "exam_attempts", "exam_questions"):
+          for table in ("users", "curricula", "exam_pathways", "enquiries", "exams", "exam_attempts"):
               db.execute(f"CREATE TABLE {table} (id TEXT PRIMARY KEY)")
+          db.execute("CREATE TABLE exam_questions (id TEXT PRIMARY KEY, exam_id TEXT REFERENCES exams(id))")
           db.executescript(ddl)
           expected = {"public_exam_publications", "public_assessment_registrations", "public_assessment_attempts", "public_assessment_answers"}
           actual = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
