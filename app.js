@@ -1931,3 +1931,5 @@ document.addEventListener("change",e=>{
 });
 document.addEventListener("click",e=>{if(e.target.id==="refresh-fees")loadAdminFees();});
 document.addEventListener("click",e=>{if(e.target.id==="refresh-teacher-leaves")loadAdminTeacherLeaves();});
+
+// Trigger preview build for teacher/student dashboard navigation QA.
