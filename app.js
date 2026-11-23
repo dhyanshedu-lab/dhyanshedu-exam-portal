@@ -138,11 +138,12 @@ function roleWorkspaceSection() {
   section = document.createElement("section");
   section.id = "role-workspace-page";
   section.innerHTML = `
-    <div class="section-heading page-title">
+    <div class="section-heading page-title" id="role-overview">
       <div><h2 id="role-workspace-heading">My workspace</h2>
       <p class="muted" id="role-workspace-subtitle">Your assigned learning activity.</p></div>
     </div>
-    <div class="stats-grid">
+    <div id="student-progress-slot"></div>
+    <div class="stats-grid" id="role-workspace-stats">
       <article class="stat-card"><p>My batches</p><strong id="my-batch-count">—</strong></article>
       <article class="stat-card"><p>Assignments</p><strong id="my-assignment-count">—</strong></article>
       <article class="stat-card"><p>Study materials</p><strong id="my-material-count">—</strong></article>
@@ -652,9 +653,39 @@ async function loadTeacherLeaves(){
 }
 async function loadStudentClassProgress(){
   const target=$("#student-class-progress"),badges=$("#student-achievement-badges");if(!target||!badges)return;
-  try{const d=await api("/api/student/class-progress");target.replaceChildren();(d.progress||[]).forEach(p=>{const card=document.createElement("div");card.className="form-card";const h=document.createElement("h4");h.textContent=p.batch_name+" · "+p.subject_name;const label=document.createElement("p");label.textContent=p.completed_classes+" / "+p.total_classes+" classes completed · "+p.completion_percent+"%";const bar=document.createElement("progress");bar.max=100;bar.value=p.completion_percent;bar.style.width="100%";card.append(h,label,bar);target.append(card);});if(!target.children.length)target.textContent="Your class progress will appear once the Admin sets your class entitlement.";
-  badges.replaceChildren();(d.badges||[]).forEach(b=>{const card=document.createElement("article");card.className="stat-card";const name=document.createElement("p");name.textContent=b.badge_emoji+" "+b.badge_name;const desc=document.createElement("small");desc.textContent=b.threshold_percent+"% milestone · "+b.description;card.append(name,desc);badges.append(card);});if(!badges.children.length){const p=document.createElement("p");p.className="muted";p.textContent="Your badges will appear as you complete class milestones.";badges.append(p);}
+  try{
+    const d=await api("/api/student/class-progress"),items=d.progress||[];target.replaceChildren();
+    if(items.length){
+      const completed=items.reduce((n,p)=>n+Number(p.completed_classes||0),0),total=items.reduce((n,p)=>n+Number(p.total_classes||0),0),overall=total?Math.round(completed/total*100):0;
+      const summary=document.createElement("div");summary.className="student-progress-summary";
+      const info=document.createElement("div"),kicker=document.createElement("span"),score=document.createElement("strong"),caption=document.createElement("p");
+      kicker.className="student-progress-kicker";kicker.textContent="OVERALL CLASS COMPLETION";score.textContent=overall+"%";caption.textContent=completed+" of "+total+" classes completed";info.append(kicker,score,caption);
+      const ring=document.createElement("div");ring.className="student-progress-ring";ring.style.setProperty("--progress",overall+"%");const ringText=document.createElement("span");ringText.textContent=overall+"%";ring.append(ringText);summary.append(info,ring);target.append(summary);
+      const grid=document.createElement("div");grid.className="student-progress-grid";
+      items.forEach(p=>{const percent=Math.max(0,Math.min(100,Number(p.completion_percent)||0)),card=document.createElement("article");card.className="student-progress-card";
+        const head=document.createElement("div");head.className="student-progress-card-head";const title=document.createElement("h4");title.textContent=p.batch_name+" · "+p.subject_name;const pct=document.createElement("strong");pct.textContent=percent+"%";head.append(title,pct);
+        const label=document.createElement("p");label.textContent=p.completed_classes+" of "+p.total_classes+" classes completed";
+        const track=document.createElement("div");track.className="student-progress-track";track.setAttribute("role","progressbar");track.setAttribute("aria-valuemin","0");track.setAttribute("aria-valuemax","100");track.setAttribute("aria-valuenow",String(percent));track.setAttribute("aria-label",p.batch_name+" class completion");
+        const fill=document.createElement("span");fill.style.width=percent+"%";track.append(fill);card.append(head,label,track);grid.append(card);
+      });target.append(grid);
+    }else target.textContent="Your class progress will appear once the Admin sets your class entitlement."; 
+    badges.replaceChildren();(d.badges||[]).forEach(b=>{const card=document.createElement("article");card.className="student-achievement-card";const emoji=document.createElement("span");emoji.className="student-achievement-icon";emoji.textContent=b.badge_emoji;const name=document.createElement("strong");name.textContent=b.badge_name;const desc=document.createElement("small");desc.textContent=b.threshold_percent+"% milestone · "+b.description;card.append(emoji,name,desc);badges.append(card);});
+    if(!badges.children.length){const p=document.createElement("p");p.className="muted";p.textContent="Your achievement badges will appear as you complete class milestones.";badges.append(p);}
   }catch(e){target.textContent=e.message;}
+}
+function buildRoleSidebarNavigation(role, section) {
+  const nav=$("#dashboard-view .sidebar nav");if(!nav)return;nav.replaceChildren();
+  const entries=[["▦","Overview","#role-overview"],
+    ...(role==="student"?[["◉","Student progress","#student-progress-panel"]]:[]),
+    ["▤","My batches","#my-batches-list"],["✓","Assignments","#my-assignments-list"],["▧","Study materials","#my-materials-list"],["◷","Classes","#my-live-list"],
+    ...(role==="teacher"?[["✎","Question bank","#teacher-question-form"],["▣","Exam builder","#teacher-exam-form"],["▥","My exams","#teacher-exam-list"],["✓","Evaluation","#teacher-evaluation-list"],["↗","Create assignment","#teacher-assignment-form"],["⇧","Upload materials","#teacher-material-form"],["☷","Leave requests","#teacher-leave-form"]]:[["▣","Exam centre","#student-exam-list"],["☷","My homework","#student-assignment-list"],["₹","Fees & receipts","#student-fee-accounts"]])
+  ];
+  entries.forEach(([glyph,label,selector],index)=>{const source=section.querySelector(selector);if(!source)return;
+    const target=selector==="#role-overview"?source:(source.closest(".table-card, .form-card")||source);
+    if(!target.id)target.id="role-nav-section-"+index;
+    const link=document.createElement("a");link.className="nav-item"+(index===0?" active":"");link.href="#"+target.id;link.innerHTML="<span>"+glyph+"</span> "+label;
+    link.addEventListener("click",event=>{event.preventDefault();nav.querySelectorAll(".nav-item").forEach(item=>item.classList.remove("active"));link.classList.add("active");target.scrollIntoView({behavior:"smooth",block:"start"});});nav.append(link);
+  });
 }
 async function loadRoleWorkspace(role) {
   const section = roleWorkspaceSection();
@@ -714,14 +745,16 @@ async function loadRoleWorkspace(role) {
       await loadLearningTasks("teacher");
     } else if (role === "student") {
       const progressPanel=document.createElement("div");
-      progressPanel.className="table-card";
-      progressPanel.innerHTML="<div class='table-heading'><h3>My class progress</h3><p class='muted'>Completed lessons count when your attendance is Present or Late.</p></div><div id='student-class-progress'><p class='muted'>Loading progress…</p></div><div class='table-heading'><h3>Achievement badges</h3></div><div id='student-achievement-badges' class='stats-grid'></div>";
-      section.append(progressPanel);
+      progressPanel.id="student-progress-panel";
+      progressPanel.className="table-card student-progress-panel";
+      progressPanel.innerHTML="<div class='table-heading'><div><h3>Student progress</h3><p class='muted'>Your class completion and learning milestones</p></div></div><div id='student-class-progress'><p class='muted'>Loading progress…</p></div><div class='table-heading'><h3>Achievement badges</h3></div><div id='student-achievement-badges' class='student-achievement-grid'></div>";
+      $("#student-progress-slot").append(progressPanel);
       await loadStudentClassProgress();
       await loadStudentExams();
       await loadLearningTasks("student");
       await loadStudentFees();
     }
+    buildRoleSidebarNavigation(role, section);
   } catch (error) {
     const message = document.createElement("p");
     message.className = "message";
