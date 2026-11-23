@@ -131,6 +131,54 @@ function page(name) {
   if (name !== "overview") loadAdminPage(name);
 }
 
+function buildRoleQuickNav(section, role) {
+  const nav = document.createElement("nav");
+  nav.className = "role-quick-nav";
+  nav.setAttribute("aria-label", "Dashboard sections");
+
+  const common = [
+    ["Overview", ".stats-grid"],
+    ["My batches", "#my-batches-list"],
+    ["Assignments", "#my-assignments-list"],
+    ["Study materials", "#my-materials-list"],
+    ["Classes", "#my-live-list"]
+  ];
+  const roleSpecific = role === "teacher" ? [
+    ["Question bank", "#teacher-question-form"],
+    ["My questions", "#teacher-question-list"],
+    ["Exam builder", "#teacher-exam-form"],
+    ["My exams", "#teacher-exam-list"],
+    ["Evaluation", "#teacher-evaluation-list"],
+    ["Upload materials", "#teacher-material-form"],
+    ["Create assignment", "#teacher-assignment-form"],
+    ["Published assignments", "#teacher-assignment-list"]
+  ] : [
+    ["Exam centre", "#student-exam-list"],
+    ["My homework", "#student-assignment-list"],
+    ["Fees & receipts", "#student-fee-accounts"]
+  ];
+
+  [...common, ...roleSpecific].forEach(([label, selector], index) => {
+    const source = section.querySelector(selector);
+    if (!source) return;
+    const target = selector === ".stats-grid" ? source :
+      (source.closest(".table-card, .form-card") || source);
+    if (!target.id) target.id = "role-section-" + index;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "role-quick-link";
+    button.textContent = label;
+    button.addEventListener("click", () => {
+      section.querySelectorAll(".role-quick-link").forEach(item => item.classList.remove("active"));
+      button.classList.add("active");
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    nav.append(button);
+  });
+
+  section.prepend(nav);
+}
+
 function roleWorkspaceSection() {
   let section = $("#role-workspace-page");
   if (section) section.remove();
@@ -239,6 +287,7 @@ function roleWorkspaceSection() {
     `;
     section.append(exams);
   }
+  buildRoleQuickNav(section, profile?.role);
   return section;
 }
 
