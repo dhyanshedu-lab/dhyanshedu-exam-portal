@@ -1051,7 +1051,7 @@ export default {
 
        if (!name || !curriculumId || !yearId) return reply({error:"Enter a class name, curriculum and academic year"},400,request);
 
-       const curriculum=await env.DB.prepare("SELECT id FROM curricula WHERE id=? AND status='active'").bind(curriculumId).first();
+       const curriculum=await env.DB.prepare("SELECT id FROM curricula WHERE id=?").bind(curriculumId).first();
 
        const year=await env.DB.prepare("SELECT id,name FROM academic_years WHERE id=? AND is_active=1").bind(yearId).first();
 
