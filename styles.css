@@ -161,3 +161,6 @@ textarea{resize:vertical;min-height:76px;line-height:1.5}
 .student-achievement-card strong{font-size:13px}
 .student-achievement-card small{font-size:11px;color:var(--muted);line-height:1.45}
 @media(max-width:680px){.student-progress-grid{grid-template-columns:1fr}.student-achievement-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.student-progress-summary{padding:16px}.student-progress-ring{width:68px;height:68px;flex-basis:68px}}
+/* Admin master-data edit actions */
+#class-list .btn,#subject-list .btn,#fee-plan-list .btn{white-space:nowrap}
+#cancel-class-edit[hidden],#cancel-subject-edit[hidden],#cancel-fee-plan-edit[hidden]{display:none}
