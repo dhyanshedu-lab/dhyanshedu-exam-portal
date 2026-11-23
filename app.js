@@ -1512,7 +1512,7 @@ async function loadAdminPage(name) {
 }
 
 addCancelButton($("#fee-plan-form"),"cancel-fee-plan-edit","Cancel",cancelFeePlanEdit);
-$("#fee-plan-submit").id="fee-plan-submit";
+$("#fee-plan-form").querySelector('button[type="submit"]').id="fee-plan-submit";
 document.addEventListener("submit",async e=>{
   if(e.target.id!=="teacher-grade-form") return;
   e.preventDefault();
