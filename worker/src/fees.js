@@ -44,6 +44,25 @@ export async function handleFeeRequest(request,env,user,account,path,method){
     }catch(e){return fail("Could not save fee plan. Check selected class, subject, batch and migration status. "+e.message,400,request);}
     return json({success:true,id:idValue,public_status:"draft"},201,request);
   }
+  const planEdit=path.match(/^\/api\/admin\/fee-plans\/([0-9a-f-]+)$/i);
+  if(planEdit&&method==="PATCH"&&admin){
+    const b=await request.json().catch(()=>({})),name=clean(b.name,160),description=clean(b.description,2000)||null,amount=Number(b.amount_paise),frequency=clean(b.billing_frequency,20)||"one_time",scope=clean(b.pricing_scope,20)||"general";
+    if(!name||!money(amount)||!["one_time","monthly","quarterly","term","annual"].includes(frequency)||!["general","curriculum","class","subject","batch"].includes(scope))return fail("Enter a plan name, positive amount and valid billing frequency/scope.",400,request);
+    if((scope==="curriculum"&&!b.curriculum_id)||(scope==="class"&&!b.class_id)||(scope==="subject"&&!b.subject_id)||(scope==="batch"&&!b.batch_id))return fail("Select the matching curriculum, class, subject or batch for this pricing scope.",400,request);
+    const old=await env.DB.prepare("SELECT * FROM fee_plans WHERE id=?").bind(planEdit[1]).first();
+    if(!old)return fail("Fee plan not found.",404,request);
+    const targetId=old.public_status==="draft"?old.id:id();
+    try{
+      if(targetId!==old.id){
+        await env.DB.prepare("INSERT INTO fee_plans(id,plan_name,name,description,amount_paise,billing_period,billing_frequency,is_active,pricing_scope,batch_type,curriculum_id,class_id,subject_id,batch_id,effective_from,effective_to,public_status,inclusions,terms,discount_type,discount_value) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'draft',?,?,?,?)")
+          .bind(targetId,old.plan_name||old.name,old.name,old.description,old.amount_paise,old.billing_period,old.billing_frequency,old.is_active,old.pricing_scope,old.batch_type,old.curriculum_id,old.class_id,old.subject_id,old.batch_id,old.effective_from,old.effective_to,old.inclusions,old.terms,old.discount_type,old.discount_value).run();
+      }
+      await env.DB.prepare("UPDATE fee_plans SET plan_name=?,name=?,description=?,amount_paise=?,billing_period=?,billing_frequency=?,pricing_scope=?,batch_type=?,curriculum_id=?,class_id=?,subject_id=?,batch_id=?,effective_from=?,effective_to=?,inclusions=?,terms=? WHERE id=?")
+        .bind(name,name,description,amount,frequency,frequency,scope,clean(b.batch_type,20)||null,clean(b.curriculum_id,80)||null,clean(b.class_id,80)||null,clean(b.subject_id,80)||null,clean(b.batch_id,80)||null,clean(b.effective_from,20)||null,clean(b.effective_to,20)||null,clean(b.inclusions,3000)||null,clean(b.terms,3000)||null,targetId).run();
+      await audit(env,user.id,"fee_plan_updated","fee_plan",targetId,{source_plan_id:old.id,name,amount_paise:amount,pricing_scope:scope,revision:targetId!==old.id}).run();
+    }catch(e){return fail("Could not update fee plan. Check selected curriculum, class, subject or batch. "+e.message,400,request);}
+    return json({success:true,id:targetId,revision:targetId!==old.id,public_status:targetId===old.id?old.public_status:"draft"},200,request);
+  }
   const planStatus=path.match(/^\/api\/admin\/fee-plans\/([0-9a-f-]+)\/status$/i);
   if(planStatus&&method==="PATCH"&&admin){
     const b=await request.json().catch(()=>({})),status=clean(b.status,20);
