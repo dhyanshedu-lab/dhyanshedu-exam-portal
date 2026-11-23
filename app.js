@@ -12,6 +12,7 @@ const $ = s => document.querySelector(s);
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     persistSession: true,
+    storage: window.sessionStorage,
     autoRefreshToken: true,
     detectSessionInUrl: true
   }
