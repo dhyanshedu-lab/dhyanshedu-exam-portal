@@ -1,4 +1,4 @@
-import { handleStudyRequest } from "./study.js";
+import { handleStudyRequest, teacherCoveragePredicate } from "./study.js";
 import { handleFeeRequest } from "./fees.js";
 // DhyanshEdu Cloudflare Worker — consolidated working source
 // Transcribed from the Worker source supplied for the DhyanshEdu review.
@@ -81,82 +81,129 @@ async function adminUser(id, env) {
 const text = (v, max=160) => String(v ?? "").trim().slice(0,max);
 
 async function invite(email, name, role, env) {
-
- const r = await fetch(`${env.SUPABASE_URL}/auth/v1/invite`, {
-
-   method: "POST",
-
-   headers: {
-
-     apikey: env.SUPABASE_SECRET_KEY,
-
-     Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`,
-
-     "Content-Type": "application/json"
-
-   },
-
-   body: JSON.stringify({ email, data: { full_name: name, role } })
-
- });
-
- const d = await r.json().catch(() => ({}));
-
- if (!r.ok) throw new Error(d.msg || d.message || "Invitation failed; check Supabase email settings.");
-
- const id = d.id || d.user?.id;
-
- if (!id) throw new Error("Invitation response did not include user ID.");
-
- return id;
-
+  const r = await fetch(env.SUPABASE_URL + "/auth/v1/admin/generate_link", {
+    method: "POST",
+    headers: { apikey: env.SUPABASE_SECRET_KEY, Authorization: "Bearer " + env.SUPABASE_SECRET_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "invite", email, data: { full_name: name, role } })
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.msg || d.message || d.error_description || "Invitation link could not be generated.");
+  const id = d.user?.id || d.id;
+  const actionUrl = d.action_link || d.properties?.action_link;
+  if (!id || !actionUrl) { if (id) await rollbackInvite(id, env); throw new Error("Supabase did not return a valid invitation link."); }
+  return { id, actionUrl };
 }
 
 async function rollbackInvite(id, env) {
-
- await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${id}`, {
-
-   method: "DELETE",
-
-   headers: { apikey: env.SUPABASE_SECRET_KEY, Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}` }
-
- });
-
+  try {
+    await fetch(env.SUPABASE_URL + "/auth/v1/admin/users/" + id, { method: "DELETE", headers: { apikey: env.SUPABASE_SECRET_KEY, Authorization: "Bearer " + env.SUPABASE_SECRET_KEY } });
+  } catch (e) { console.error("Supabase invitation rollback failed:", e); }
 }
 
-async function inviteRole(b, role, env) {
-
- const name = text(b.full_name,120);
-
- const email = text(b.email,254).toLowerCase();
-
- if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid full name and email.");
-
- const old = await env.DB.prepare("SELECT id FROM users WHERE lower(email)=?").bind(email).first();
-
- if (old) throw new Error("This email is already registered.");
-
- const id = await invite(email,name,role,env);
-
- try {
-
-   await env.DB.prepare("INSERT INTO users(id,full_name,email,role,status) VALUES(?,?,?,?,'pending')")
-
-     .bind(id,name,email,role).run();
-
- } catch (e) {
-
-   await rollbackInvite(id,env);
-
-   throw e;
-
- }
-
- return { id, full_name:name, email, status:"pending" };
-
+async function sendInviteEmail(email, name, role, actionUrl, authUserId, eventKey, env) {
+  if (!env.RESEND_API_KEY) throw new Error("Resend email service is not configured.");
+  const teacher = role === "teacher";
+  const templateId = teacher ? "53c4f25c-47b3-4138-81ea-55b88da87f98" : "3706e568-c7b0-4080-9358-fc0c24f4d6df";
+  const variables = teacher ? { TEACHER_NAME: name, ACTION_URL: actionUrl, REGISTERED_EMAIL: email } : { STUDENT_NAME: name, ACTION_URL: actionUrl, REGISTERED_EMAIL: email };
+  const r = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + env.RESEND_API_KEY, "Content-Type": "application/json", "Idempotency-Key": "dhyanshedu-invite-" + authUserId + "-" + eventKey },
+    body: JSON.stringify({ from: "DhyanshEdu <noreply@dhyanshedu.com>", to: [email], template: { id: templateId, variables } })
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.message || d.error || "Invitation email could not be sent.");
+  return d;
 }
 
+async function recoveryInvite(email, name, role, env) {
+  const r = await fetch(env.SUPABASE_URL + "/auth/v1/admin/generate_link", {
+    method: "POST",
+    headers: { apikey: env.SUPABASE_SECRET_KEY, Authorization: "Bearer " + env.SUPABASE_SECRET_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "recovery", email, data: { full_name: name, role } })
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.msg || d.message || d.error_description || "A fresh account activation link could not be generated.");
+  const id = d.user?.id || d.id;
+  const actionUrl = d.action_link || d.properties?.action_link;
+  if (!id || !actionUrl) throw new Error("Supabase did not return a valid reactivation link.");
+  return { id, actionUrl };
+}
 
+async function inviteRole(b, role, env, actorId) {
+  const name = text(b.full_name,120);
+  const email = text(b.email,254).toLowerCase();
+  if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid full name and email.");
+  if (!env.RESEND_API_KEY) throw new Error("Resend email service is not configured.");
+  const old = await env.DB.prepare("SELECT id,full_name,email,role,status,deleted_at,deleted_by FROM users WHERE lower(email)=? LIMIT 1").bind(email).first();
+  if (old) {
+    if (!old.deleted_at) throw new Error("This email is already registered.");
+    if (old.role !== role) throw new Error("This email belongs to a previously removed " + old.role + " account. Restore it using the original role.");
+    // Supabase no longer has this archived user's Auth identity. Generate a new invite identity,
+    // then remap every known D1 user reference in one deferred-FK transaction.
+    const created = await invite(email,name,role,env);
+    const oldId = old.id, newId = created.id, auditId = crypto.randomUUID();
+    const refs = [
+      ["assignment_submissions","student_id"],["assignments","teacher_id"],["audit_logs","actor_id"],
+      ["batch_students","student_id"],["batch_teachers","teacher_id"],["batches","created_by"],
+      ["enquiries","assigned_to"],["enquiry_history","actor_id"],["exam_attachments","uploaded_by"],
+      ["exam_attempts","student_id"],["exams","created_by"],["fee_adjustments","created_by"],
+      ["file_assets","owner_id"],["live_class_attendance","student_id"],["live_class_attendance","marked_by"],
+      ["live_classes","teacher_id"],["notifications","user_id"],["questions","teacher_id"],
+      ["results","student_id"],["results","evaluated_by"],["student_badges","student_id"],
+      ["student_class_entitlements","student_id"],["student_class_entitlements","created_by"],
+      ["student_fee_accounts","student_id"],["student_profiles","user_id"],["study_materials","teacher_id"],
+      ["teacher_assignments","teacher_id"],["teacher_coverage_assignments","primary_teacher_id"],
+      ["teacher_coverage_assignments","substitute_teacher_id"],["teacher_coverage_assignments","created_by"],
+      ["teacher_leaves","teacher_id"],["teacher_leaves","reviewed_by"],
+      ["student_fee_accounts","created_by"],["fee_transactions","recorded_by"],
+      ["audit_logs","actor_user_id"],["users","deleted_by"]
+    ];
+    const statements = [env.DB.prepare("PRAGMA defer_foreign_keys=ON")];
+    for (const [table,column] of refs) {
+      statements.push(env.DB.prepare("UPDATE " + table + " SET " + column + "=? WHERE " + column + "=?").bind(newId,oldId));
+    }
+    const details = JSON.stringify({full_name:name,email,previous_auth_user_id:oldId,new_auth_user_id:newId});
+    statements.push(env.DB.prepare("UPDATE users SET id=?,full_name=?,status='pending',deleted_at=NULL,deleted_by=NULL WHERE id=? AND role=? AND deleted_at IS NOT NULL").bind(newId,name,oldId,role));
+    statements.push(env.DB.prepare("INSERT INTO audit_logs(id,actor_id,actor_user_id,action,entity_type,entity_id,details,details_json) VALUES(?,?,?,?,?,?,?,?)").bind(auditId,actorId,actorId,role+"_restored","user",newId,details,details));
+    try {
+      const result = await env.DB.batch(statements);
+      const userUpdate = result[refs.length+1];
+      if (!userUpdate?.meta?.changes) throw new Error("Archived teacher record was not updated; the database transaction must be reviewed.");
+    } catch (e) {
+      await rollbackInvite(newId,env);
+      throw new Error("D1 restoration did not complete. No historical records were intentionally changed. " + e.message);
+    }
+    try {
+      await sendInviteEmail(email,name,role,created.actionUrl,newId,crypto.randomUUID(),env);
+    } catch (e) {
+      try {
+        const rollback = [env.DB.prepare("PRAGMA defer_foreign_keys=ON")];
+        for (const [table,column] of refs) {
+          rollback.push(env.DB.prepare("UPDATE " + table + " SET " + column + "=? WHERE " + column + "=?").bind(oldId,newId));
+        }
+        rollback.push(env.DB.prepare("UPDATE users SET id=?,full_name=?,status=?,deleted_at=?,deleted_by=? WHERE id=? AND role=?").bind(oldId,old.full_name,old.status,old.deleted_at,old.deleted_by,newId,role));
+        rollback.push(env.DB.prepare("DELETE FROM audit_logs WHERE id=?").bind(auditId));
+        await env.DB.batch(rollback);
+        await rollbackInvite(newId,env);
+      } catch (rollbackError) {
+        console.error("Teacher restoration rollback failed; Auth identity retained for manual recovery:",rollbackError);
+        throw new Error("The teacher record was remapped, but the invitation email failed and automatic rollback also failed. The new login has been retained to protect the linked records; manual recovery is required.");
+      }
+      throw e;
+    }
+    return { id:newId, full_name:name, email, status:"pending", restored:true };
+  }
+  const created = await invite(email,name,role,env);
+  try {
+    await env.DB.prepare("INSERT INTO users(id,full_name,email,role,status) VALUES(?,?,?,?,'pending')").bind(created.id,name,email,role).run();
+    await sendInviteEmail(email,name,role,created.actionUrl,created.id,crypto.randomUUID(),env);
+  } catch (e) {
+    try { await env.DB.prepare("DELETE FROM users WHERE id=? AND role=?").bind(created.id,role).run(); } catch (cleanupError) { console.error("D1 invitation rollback failed:", cleanupError); }
+    await rollbackInvite(created.id,env);
+    throw e;
+  }
+  return { id:created.id, full_name:name, email, status:"pending", restored:false };
+}
 
 export default {
 
@@ -175,6 +222,16 @@ export default {
 
 
 
+     // Public pricing catalogue: only active fee plans explicitly published by Admin.
+     if (path === "/api/public/fee-plans" && method === "GET") {
+       const origin = request.headers.get("Origin") || "";
+       if (!ALLOWED_ORIGINS.includes(origin)) return reply({error:"Origin not allowed"},403,request);
+       const q = await env.DB.prepare(
+         "SELECT id,name,plan_name,description,amount_paise,billing_frequency,batch_type,inclusions,terms,effective_from,effective_to FROM fee_plans WHERE is_active=1 AND public_status='published' AND (effective_from IS NULL OR effective_from<=date('now')) AND (effective_to IS NULL OR effective_to>=date('now')) ORDER BY name"
+       ).all();
+       return reply({success:true,fee_plans:q.results||[]},200,request);
+     }
+
      // Preserve the existing public website enquiry submission route.
      if (path === "/api/public/enquiries" && method === "POST") {
        const origin = request.headers.get("Origin") || "";
@@ -183,14 +240,24 @@ export default {
        const student = text(b.student_name,120), parent = text(b.parent_name,120);
        const phone = text(b.phone,30), email = text(b.email,254).toLowerCase();
        const studentClass = text(b.student_class,30), board = text(b.board,80);
+       let courseInterest = text(b.course_interest,240);
+       const feePlanId = text(b.fee_plan_id,80), learningFormat = text(b.learning_format,20);
+       if (feePlanId) {
+         const plan = await env.DB.prepare(
+           "SELECT id,name,amount_paise,batch_type FROM fee_plans WHERE id=? AND is_active=1 AND public_status='published' AND (effective_from IS NULL OR effective_from<=date('now')) AND (effective_to IS NULL OR effective_to>=date('now'))"
+         ).bind(feePlanId).first();
+         if (!plan) return reply({error:"This fee option is no longer available. Please refresh the page and select again."},409,request);
+         if (!["one_to_one","group"].includes(learningFormat) || plan.batch_type !== learningFormat) return reply({error:"Please select a valid learning format."},400,request);
+         courseInterest = `${plan.name} | ${learningFormat === "one_to_one" ? "One-to-one" : "Small group"} | ₹${(Number(plan.amount_paise)/100).toLocaleString("en-IN")}/60 min`;
+       }
        if (!student || !phone || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !studentClass) {
          return reply({error:"Please provide student name, phone, valid email and class."},400,request);
        }
        const digits = phone.replace(/\D/g,"").length;
        if (digits < 7 || digits > 15) return reply({error:"Enter a valid phone number."},400,request);
        const id = crypto.randomUUID();
-       await env.DB.prepare("INSERT INTO enquiries(id,student_name,parent_name,phone,email,student_class,board) VALUES(?,?,?,?,?,?,?)")
-         .bind(id,student,parent||null,phone,email,studentClass,board||null).run();
+       await env.DB.prepare("INSERT INTO enquiries(id,student_name,parent_name,phone,email,student_class,board,course_interest) VALUES(?,?,?,?,?,?,?,?)")
+         .bind(id,student,parent||null,phone,email,studentClass,board||null,courseInterest||null).run();
        return reply({success:true,id,message:"Your enquiry has been received. Our team will contact you."},201,request);
      }
 
@@ -307,16 +374,16 @@ export default {
        if (path === "/api/workspace" && method === "GET") {
          const [batches, assignments, materials, liveClasses] = await Promise.all([
            isTeacher
-             ? env.DB.prepare("SELECT COUNT(*) total FROM batch_teachers bt JOIN batches b ON b.id=bt.batch_id WHERE bt.teacher_id=? AND b.status='active'").bind(user.id).first()
+             ? env.DB.prepare(`SELECT COUNT(*) total FROM batches b WHERE b.status='active' AND (EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=b.id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})`).bind(user.id,user.id).first()
              : env.DB.prepare("SELECT COUNT(*) total FROM batch_students bs JOIN batches b ON b.id=bs.batch_id WHERE bs.student_id=? AND bs.status='active' AND b.status='active'").bind(user.id).first(),
            isTeacher
-             ? env.DB.prepare("SELECT COUNT(*) total FROM assignments a WHERE a.status='published' AND (a.teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=a.batch_id AND bt.teacher_id=?))").bind(user.id,user.id).first()
+             ? env.DB.prepare(`SELECT COUNT(*) total FROM assignments a JOIN batches b ON b.id=a.batch_id WHERE a.status='published' AND (a.teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=a.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})`).bind(user.id,user.id,user.id).first()
              : env.DB.prepare("SELECT COUNT(*) total FROM assignments a WHERE a.status='published' AND (EXISTS (SELECT 1 FROM batch_students bs WHERE bs.batch_id=a.batch_id AND bs.student_id=? AND bs.status='active') OR EXISTS (SELECT 1 FROM batch_students bs JOIN batches b ON b.id=bs.batch_id WHERE bs.student_id=? AND bs.status='active' AND b.class_id=a.class_id))").bind(user.id,user.id).first(),
            isTeacher
-             ? env.DB.prepare("SELECT COUNT(*) total FROM study_materials sm WHERE sm.deleted_at IS NULL AND sm.teacher_id=?").bind(user.id).first()
+             ? env.DB.prepare(`SELECT COUNT(*) total FROM study_materials sm JOIN batches b ON b.id=sm.batch_id WHERE sm.deleted_at IS NULL AND (sm.teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=sm.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})`).bind(user.id,user.id,user.id).first()
              : env.DB.prepare("SELECT COUNT(*) total FROM study_materials sm WHERE sm.deleted_at IS NULL AND (sm.visibility='all_students' OR EXISTS (SELECT 1 FROM batch_students bs WHERE bs.student_id=? AND bs.status='active' AND bs.batch_id=sm.batch_id))").bind(user.id).first(),
            isTeacher
-             ? env.DB.prepare("SELECT COUNT(*) total FROM live_classes lc WHERE lc.teacher_id=? AND lc.status IN ('scheduled','live')").bind(user.id).first()
+             ? env.DB.prepare("SELECT COUNT(*) total FROM live_classes lc WHERE lc.status IN ('scheduled','live') AND (lc.teacher_id=? OR EXISTS (SELECT 1 FROM teacher_coverage_assignments tc WHERE tc.status='active' AND tc.substitute_teacher_id=? AND date(lc.starts_at,'+5 hours','+30 minutes') BETWEEN tc.effective_from AND tc.effective_to AND ((tc.scope_type='batch' AND tc.batch_id=lc.batch_id) OR (tc.scope_type='class_subject' AND tc.class_id=lc.class_id AND tc.subject_id=lc.subject_id AND NOT EXISTS (SELECT 1 FROM teacher_coverage_assignments tb WHERE tb.status='active' AND tb.scope_type='batch' AND tb.batch_id=lc.batch_id AND date(lc.starts_at,'+5 hours','+30 minutes') BETWEEN tb.effective_from AND tb.effective_to)))))").bind(user.id,user.id).first()
              : env.DB.prepare("SELECT COUNT(*) total FROM live_classes lc WHERE lc.status IN ('scheduled','live') AND (EXISTS (SELECT 1 FROM batch_students bs WHERE bs.student_id=? AND bs.status='active' AND bs.batch_id=lc.batch_id) OR (lc.batch_id IS NULL AND EXISTS (SELECT 1 FROM batch_students bs JOIN batches b ON b.id=bs.batch_id WHERE bs.student_id=? AND bs.status='active' AND b.class_id=lc.class_id)))").bind(user.id,user.id).first()
          ]);
          return reply({success:true,role:account.role,stats:{
@@ -327,28 +394,28 @@ export default {
 
        if (path === "/api/my/batches" && method === "GET") {
          const result = isTeacher
-           ? await env.DB.prepare("SELECT b.id,b.batch_name,b.batch_type,b.status,b.class_id,b.subject_id,c.class_name,s.subject_name FROM batch_teachers bt JOIN batches b ON b.id=bt.batch_id LEFT JOIN classes c ON c.id=b.class_id LEFT JOIN subjects s ON s.id=b.subject_id WHERE bt.teacher_id=? ORDER BY b.batch_name").bind(user.id).all()
+           ? await env.DB.prepare(`SELECT b.id,b.batch_name,b.batch_type,b.status,b.class_id,b.subject_id,c.class_name,s.subject_name FROM batches b LEFT JOIN classes c ON c.id=b.class_id LEFT JOIN subjects s ON s.id=b.subject_id WHERE EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=b.id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")} ORDER BY b.batch_name`).bind(user.id,user.id).all()
            : await env.DB.prepare("SELECT b.id,b.batch_name,b.batch_type,b.status,b.class_id,b.subject_id,c.class_name,s.subject_name,bs.enrolled_at FROM batch_students bs JOIN batches b ON b.id=bs.batch_id LEFT JOIN classes c ON c.id=b.class_id LEFT JOIN subjects s ON s.id=b.subject_id WHERE bs.student_id=? AND bs.status='active' ORDER BY b.batch_name").bind(user.id).all();
          return reply({success:true,batches:result.results||[]},200,request);
        }
 
        if (path === "/api/my/assignments" && method === "GET") {
          const result = isTeacher
-           ? await env.DB.prepare("SELECT DISTINCT a.id,a.title,a.instructions,a.due_at,a.max_marks,a.status,a.created_at,c.class_name,s.subject_name,b.batch_name FROM assignments a LEFT JOIN classes c ON c.id=a.class_id LEFT JOIN subjects s ON s.id=a.subject_id LEFT JOIN batches b ON b.id=a.batch_id WHERE a.status IN ('draft','published','closed') AND (a.teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=a.batch_id AND bt.teacher_id=?)) ORDER BY a.due_at").bind(user.id,user.id).all()
+           ? await env.DB.prepare(`SELECT DISTINCT a.id,a.title,a.instructions,a.due_at,a.max_marks,a.status,a.created_at,c.class_name,s.subject_name,b.batch_name FROM assignments a LEFT JOIN classes c ON c.id=a.class_id LEFT JOIN subjects s ON s.id=a.subject_id LEFT JOIN batches b ON b.id=a.batch_id WHERE a.status IN ('draft','published','closed') AND (a.teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=a.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")}) ORDER BY a.due_at`).bind(user.id,user.id,user.id).all()
            : await env.DB.prepare("SELECT DISTINCT a.id,a.title,a.instructions,a.due_at,a.max_marks,a.status,a.created_at,c.class_name,s.subject_name,b.batch_name,sub.status submission_status,sub.submitted_at,sub.marks_awarded,sub.teacher_feedback FROM assignments a LEFT JOIN classes c ON c.id=a.class_id LEFT JOIN subjects s ON s.id=a.subject_id LEFT JOIN batches b ON b.id=a.batch_id LEFT JOIN assignment_submissions sub ON sub.assignment_id=a.id AND sub.student_id=? WHERE a.status='published' AND (EXISTS (SELECT 1 FROM batch_students bs WHERE bs.batch_id=a.batch_id AND bs.student_id=? AND bs.status='active') OR EXISTS (SELECT 1 FROM batch_students bs JOIN batches eb ON eb.id=bs.batch_id WHERE bs.student_id=? AND bs.status='active' AND eb.class_id=a.class_id)) ORDER BY a.due_at").bind(user.id,user.id,user.id).all();
          return reply({success:true,assignments:result.results||[]},200,request);
        }
 
        if (path === "/api/my/materials" && method === "GET") {
          const result = isTeacher
-           ? await env.DB.prepare("SELECT id,title,description,class_id,subject_id,batch_id,file_name,mime_type,file_size_bytes,created_at FROM study_materials WHERE teacher_id=? AND deleted_at IS NULL ORDER BY created_at DESC").bind(user.id).all()
+           ? await env.DB.prepare(`SELECT sm.id,sm.title,sm.description,sm.class_id,sm.subject_id,sm.batch_id,sm.file_name,sm.mime_type,sm.file_size_bytes,sm.created_at FROM study_materials sm LEFT JOIN batches b ON b.id=sm.batch_id WHERE sm.deleted_at IS NULL AND (sm.teacher_id=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=sm.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")}) ORDER BY sm.created_at DESC`).bind(user.id,user.id,user.id).all()
            : await env.DB.prepare("SELECT DISTINCT sm.id,sm.title,sm.description,sm.class_id,sm.subject_id,sm.batch_id,sm.file_name,sm.mime_type,sm.file_size_bytes,sm.created_at FROM study_materials sm WHERE sm.deleted_at IS NULL AND (sm.visibility='all_students' OR EXISTS (SELECT 1 FROM batch_students bs WHERE bs.student_id=? AND bs.status='active' AND bs.batch_id=sm.batch_id)) ORDER BY sm.created_at DESC").bind(user.id).all();
          return reply({success:true,materials:result.results||[]},200,request);
        }
 
        if (path === "/api/my/live-classes" && method === "GET") {
          const result = isTeacher
-           ? await env.DB.prepare("SELECT DISTINCT lc.id,lc.title,lc.description,lc.batch_id,lc.class_id,lc.subject_id,lc.meeting_provider,lc.meeting_url,lc.starts_at,lc.ends_at,lc.status,b.batch_name FROM live_classes lc LEFT JOIN batches b ON b.id=lc.batch_id WHERE lc.teacher_id=? OR EXISTS (SELECT 1 FROM teacher_coverage_assignments tc WHERE tc.status='active' AND tc.substitute_teacher_id=? AND date(lc.starts_at) BETWEEN tc.effective_from AND tc.effective_to AND ((tc.scope_type='batch' AND tc.batch_id=lc.batch_id) OR (tc.scope_type='class_subject' AND tc.class_id=lc.class_id AND tc.subject_id=lc.subject_id))) ORDER BY lc.starts_at").bind(user.id,user.id).all()
+           ? await env.DB.prepare("SELECT DISTINCT lc.id,lc.title,lc.description,lc.batch_id,lc.class_id,lc.subject_id,lc.meeting_provider,lc.meeting_url,lc.starts_at,lc.ends_at,lc.status,b.batch_name FROM live_classes lc LEFT JOIN batches b ON b.id=lc.batch_id WHERE lc.teacher_id=? OR EXISTS (SELECT 1 FROM teacher_coverage_assignments tc WHERE tc.status='active' AND tc.substitute_teacher_id=? AND date(lc.starts_at,'+5 hours','+30 minutes') BETWEEN tc.effective_from AND tc.effective_to AND ((tc.scope_type='batch' AND tc.batch_id=lc.batch_id) OR (tc.scope_type='class_subject' AND tc.class_id=lc.class_id AND tc.subject_id=lc.subject_id AND NOT EXISTS (SELECT 1 FROM teacher_coverage_assignments tb WHERE tb.status='active' AND tb.scope_type='batch' AND tb.batch_id=lc.batch_id AND date(lc.starts_at,'+5 hours','+30 minutes') BETWEEN tb.effective_from AND tb.effective_to)))) ORDER BY lc.starts_at").bind(user.id,user.id).all()
            : await env.DB.prepare("SELECT DISTINCT lc.id,lc.title,lc.description,lc.batch_id,lc.class_id,lc.subject_id,lc.meeting_provider,lc.meeting_url,lc.starts_at,lc.ends_at,lc.status,b.batch_name,t.full_name teacher_name FROM live_classes lc LEFT JOIN batches b ON b.id=lc.batch_id LEFT JOIN users t ON t.id=lc.teacher_id WHERE lc.status<>'cancelled' AND (EXISTS (SELECT 1 FROM batch_students bs WHERE bs.student_id=? AND bs.status='active' AND bs.batch_id=lc.batch_id) OR (lc.batch_id IS NULL AND EXISTS (SELECT 1 FROM batch_students bs JOIN batches b ON b.id=bs.batch_id WHERE bs.student_id=? AND bs.status='active' AND b.class_id=lc.class_id))) ORDER BY lc.starts_at").bind(user.id,user.id).all();
          return reply({success:true,live_classes:result.results||[]},200,request);
        }
@@ -497,8 +564,21 @@ export default {
      if (account.role === "teacher") {
        if (path === "/api/teacher/questions" && method === "GET") {
          const rows = await env.DB.prepare(
-           "SELECT q.id,q.question_type,q.question_text,q.topic,q.difficulty,q.default_marks,q.subject_id,q.class_id,q.created_at,(SELECT COUNT(*) FROM question_options qo WHERE qo.question_id=q.id) option_count FROM questions q WHERE q.teacher_id=? AND q.status='active' ORDER BY q.created_at DESC"
-         ).bind(user.id).all();
+           `SELECT DISTINCT q.id,q.question_type,q.question_text,q.topic,q.difficulty,q.default_marks,q.subject_id,q.class_id,q.teacher_id owner_teacher_id,q.created_at,(SELECT COUNT(*) FROM question_options qo WHERE qo.question_id=q.id) option_count
+            FROM questions q
+            WHERE q.status='active' AND (
+              q.teacher_id=? OR EXISTS (
+                SELECT 1 FROM teacher_coverage_assignments tc
+                LEFT JOIN batches cb ON cb.id=tc.batch_id
+                WHERE tc.status='active' AND tc.substitute_teacher_id=? AND tc.primary_teacher_id=q.teacher_id
+                  AND date('now','+5 hours','+30 minutes') BETWEEN tc.effective_from AND tc.effective_to
+                  AND (
+                    (tc.scope_type='batch' AND (q.class_id IS NULL OR q.class_id=cb.class_id) AND (q.subject_id IS NULL OR q.subject_id=cb.subject_id))
+                    OR (tc.scope_type='class_subject' AND (q.class_id IS NULL OR q.class_id=tc.class_id) AND q.subject_id=tc.subject_id)
+                  )
+              )
+            ) ORDER BY q.created_at DESC`
+         ).bind(user.id,user.id).all();
          return reply({success:true,questions:rows.results||[]},200,request);
        }
 
@@ -545,8 +625,8 @@ export default {
 
        if (path === "/api/teacher/exams" && method === "GET") {
          const rows=await env.DB.prepare(
-           "SELECT DISTINCT e.id,e.title,e.description,e.batch_id,e.duration_minutes,e.total_marks,e.pass_marks,e.starts_at,e.ends_at,e.status,e.created_at,b.batch_name,(SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id=e.id) question_count FROM exams e LEFT JOIN batches b ON b.id=e.batch_id WHERE e.created_by=? ORDER BY e.created_at DESC"
-         ).bind(user.id).all();
+           `SELECT DISTINCT e.id,e.title,e.description,e.batch_id,e.duration_minutes,e.total_marks,e.pass_marks,e.starts_at,e.ends_at,e.status,e.created_at,b.batch_name,(SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id=e.id) question_count FROM exams e LEFT JOIN batches b ON b.id=e.batch_id WHERE e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")} ORDER BY e.created_at DESC`
+         ).bind(user.id,user.id,user.id).all();
          return reply({success:true,exams:rows.results||[]},200,request);
        }
 
@@ -563,12 +643,31 @@ export default {
            return reply({error:"Enter a title, assigned batch, valid duration, at least one question and a valid schedule."},400,request);
          }
          const batch=await env.DB.prepare(
-           "SELECT b.id,b.class_id,b.subject_id FROM batches b JOIN batch_teachers bt ON bt.batch_id=b.id WHERE b.id=? AND bt.teacher_id=? AND b.status='active'"
-         ).bind(batchId,user.id).first();
+           `SELECT b.id,b.class_id,b.subject_id FROM batches b WHERE b.id=? AND b.status='active' AND (EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=b.id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})`
+         ).bind(batchId,user.id,user.id).first();
          if(!batch) return reply({error:"Select an active batch assigned to you."},403,request);
          const marksRows=await env.DB.prepare(
-           `SELECT id,default_marks FROM questions WHERE teacher_id=? AND status='active' AND id IN (${questionIds.map(()=>"?").join(",")}) AND (class_id IS NULL OR class_id=?) AND (subject_id IS NULL OR subject_id=?)`
-         ).bind(user.id,...questionIds,batch.class_id,batch.subject_id).all();
+           `SELECT q.id,q.default_marks FROM questions q
+            WHERE q.status='active' AND q.id IN (${questionIds.map(()=>"?").join(",")})
+              AND (q.class_id IS NULL OR q.class_id=?) AND (q.subject_id IS NULL OR q.subject_id=?)
+              AND (
+                q.teacher_id=? OR EXISTS (
+                  SELECT 1 FROM teacher_coverage_assignments tc
+                  WHERE tc.status='active' AND tc.substitute_teacher_id=? AND tc.primary_teacher_id=q.teacher_id
+                    AND date('now','+5 hours','+30 minutes') BETWEEN tc.effective_from AND tc.effective_to
+                    AND (
+                      (tc.scope_type='batch' AND tc.batch_id=?)
+                      OR (tc.scope_type='class_subject' AND tc.class_id=? AND tc.subject_id=?
+                        AND NOT EXISTS (
+                          SELECT 1 FROM teacher_coverage_assignments tb
+                          WHERE tb.status='active' AND tb.scope_type='batch' AND tb.batch_id=?
+                            AND date('now','+5 hours','+30 minutes') BETWEEN tb.effective_from AND tb.effective_to
+                        )
+                      )
+                    )
+                )
+              )`
+         ).bind(...questionIds,batch.class_id,batch.subject_id,user.id,user.id,batchId,batch.class_id,batch.subject_id,batchId).all();
          if((marksRows.results||[]).length!==questionIds.length) return reply({error:"One or more selected questions are unavailable or do not match this batch."},400,request);
          const totalMarks=marksRows.results.reduce((sum,q)=>sum+Number(q.default_marks||0),0);
          if(passMarks!==null && passMarks>totalMarks) return reply({error:"Pass marks cannot exceed total marks."},400,request);
@@ -589,13 +688,13 @@ export default {
 
        const publishMatch=path.match(/^\/api\/teacher\/exams\/([0-9a-f-]+)\/publish$/i);
        if(publishMatch && method==="POST"){
-         const exam=await env.DB.prepare("SELECT id,status,starts_at,ends_at,(SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id=exams.id) question_count FROM exams WHERE id=? AND created_by=?").bind(publishMatch[1],user.id).first();
+         const exam=await env.DB.prepare(`SELECT exams.id,exams.status,exams.starts_at,exams.ends_at,(SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id=exams.id) question_count FROM exams JOIN batches b ON b.id=exams.batch_id WHERE exams.id=? AND (exams.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=exams.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})`).bind(publishMatch[1],user.id,user.id,user.id).first();
          if(!exam) return reply({error:"Exam not found."},404,request);
          if(!exam.question_count) return reply({error:"Add at least one question before publishing."},400,request);
          if(exam.status==="archived"||exam.status==="closed") return reply({error:"This exam cannot be published."},409,request);
          if(exam.ends_at && new Date(exam.ends_at)<=new Date()) return reply({error:"The exam end time is in the past."},400,request);
          const nextStatus=exam.starts_at && new Date(exam.starts_at)>new Date() ? "scheduled" : "published";
-         await env.DB.prepare("UPDATE exams SET status=?,updated_at=datetime('now') WHERE id=? AND created_by=?").bind(nextStatus,exam.id,user.id).run();
+         await env.DB.prepare("UPDATE exams SET status=?,updated_at=datetime('now') WHERE id=? AND (created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=exams.batch_id AND bt.teacher_id=?) OR EXISTS (SELECT 1 FROM teacher_coverage_assignments tc WHERE tc.status='active' AND tc.substitute_teacher_id=? AND date('now','+5 hours','+30 minutes') BETWEEN tc.effective_from AND tc.effective_to AND ((tc.scope_type='batch' AND tc.batch_id=exams.batch_id) OR (tc.scope_type='class_subject' AND tc.class_id=exams.class_id AND tc.subject_id=exams.subject_id AND NOT EXISTS (SELECT 1 FROM teacher_coverage_assignments tb WHERE tb.status='active' AND tb.scope_type='batch' AND tb.batch_id=exams.batch_id AND date('now','+5 hours','+30 minutes') BETWEEN tb.effective_from AND tb.effective_to))))").bind(nextStatus,exam.id,user.id,user.id,user.id).run();
          return reply({success:true,status:nextStatus},200,request);
        }
      }
@@ -604,16 +703,16 @@ export default {
      if (account.role === "teacher") {
        if (path === "/api/teacher/evaluations" && method === "GET") {
          const rows=await env.DB.prepare(
-           "SELECT ea.id attempt_id,ea.status attempt_status,ea.started_at,ea.submitted_at,ea.score,e.id exam_id,e.title exam_title,e.total_marks,e.batch_id,b.batch_name,u.full_name student_name,u.email student_email,r.marks_obtained,r.published_at,(SELECT COUNT(*) FROM student_answers sa JOIN exam_questions eq ON eq.id=sa.exam_question_id JOIN questions q ON q.id=eq.question_id WHERE sa.attempt_id=ea.id AND q.question_type IN ('numerical','short_answer','long_answer')) manual_count FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id JOIN batches b ON b.id=e.batch_id JOIN users u ON u.id=ea.student_id LEFT JOIN results r ON r.attempt_id=ea.id WHERE ea.status IN ('submitted','evaluated') AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?)) ORDER BY ea.submitted_at DESC"
-         ).bind(user.id,user.id).all();
+           `SELECT ea.id attempt_id,ea.status attempt_status,ea.started_at,ea.submitted_at,ea.score,e.id exam_id,e.title exam_title,e.total_marks,e.batch_id,b.batch_name,u.full_name student_name,u.email student_email,r.marks_obtained,r.published_at,(SELECT COUNT(*) FROM student_answers sa JOIN exam_questions eq ON eq.id=sa.exam_question_id JOIN questions q ON q.id=eq.question_id WHERE sa.attempt_id=ea.id AND q.question_type IN ('numerical','short_answer','long_answer')) manual_count FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id JOIN batches b ON b.id=e.batch_id JOIN users u ON u.id=ea.student_id LEFT JOIN results r ON r.attempt_id=ea.id WHERE ea.status IN ('submitted','evaluated') AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")}) ORDER BY ea.submitted_at DESC`
+         ).bind(user.id,user.id,user.id).all();
          return reply({success:true,evaluations:rows.results||[]},200,request);
        }
 
        const evaluationMatch=path.match(/^\/api\/teacher\/evaluations\/([0-9a-f-]+)$/i);
        if(evaluationMatch && method==="GET"){
          const attempt=await env.DB.prepare(
-           "SELECT ea.id attempt_id,ea.status attempt_status,ea.started_at,ea.submitted_at,ea.score,e.id exam_id,e.title exam_title,e.total_marks,e.pass_marks,e.batch_id,b.batch_name,u.full_name student_name,u.email student_email,r.marks_obtained,r.published_at FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id JOIN batches b ON b.id=e.batch_id JOIN users u ON u.id=ea.student_id LEFT JOIN results r ON r.attempt_id=ea.id WHERE ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?))"
-         ).bind(evaluationMatch[1],user.id,user.id).first();
+           `SELECT ea.id attempt_id,ea.status attempt_status,ea.started_at,ea.submitted_at,ea.score,e.id exam_id,e.title exam_title,e.total_marks,e.pass_marks,e.batch_id,b.batch_name,u.full_name student_name,u.email student_email,r.marks_obtained,r.published_at FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id JOIN batches b ON b.id=e.batch_id JOIN users u ON u.id=ea.student_id LEFT JOIN results r ON r.attempt_id=ea.id WHERE ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})`
+         ).bind(evaluationMatch[1],user.id,user.id,user.id).first();
          if(!attempt) return reply({error:"Evaluation not found or you are not assigned to this exam."},404,request);
          const rows=await env.DB.prepare(
            "SELECT eq.id exam_question_id,q.id question_id,eq.marks,eq.negative_marks,eq.sort_order,q.question_type,q.question_text,q.explanation,sa.answer_text,sa.selected_option_ids,sa.is_correct,sa.marks_awarded,sa.teacher_feedback FROM exam_questions eq JOIN questions q ON q.id=eq.question_id LEFT JOIN student_answers sa ON sa.exam_question_id=eq.id AND sa.attempt_id=? WHERE eq.exam_id=? ORDER BY eq.sort_order"
@@ -631,8 +730,8 @@ export default {
        if(evaluateMatch && method==="POST"){
          const b=await body(request), attemptId=evaluateMatch[1];
          const attempt=await env.DB.prepare(
-           "SELECT ea.id,ea.status,ea.exam_id,ea.student_id,e.total_marks,e.pass_marks FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id WHERE ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?))"
-         ).bind(attemptId,user.id,user.id).first();
+           `SELECT ea.id,ea.status,ea.exam_id,ea.student_id,e.total_marks,e.pass_marks FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id JOIN batches b ON b.id=e.batch_id WHERE ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})`
+         ).bind(attemptId,user.id,user.id,user.id).first();
          if(!attempt) return reply({error:"Evaluation not found or you are not assigned to this exam."},404,request);
          if(!["submitted","evaluated"].includes(attempt.status)) return reply({error:"Only submitted attempts can be evaluated."},409,request);
          const grades=Array.isArray(b.grades)?b.grades:[];
@@ -668,8 +767,8 @@ export default {
        const publishEvaluationMatch=path.match(/^\/api\/teacher\/evaluations\/([0-9a-f-]+)\/publish$/i);
        if(publishEvaluationMatch && method==="POST"){
          const attempt=await env.DB.prepare(
-           "SELECT ea.id,ea.status,r.published_at FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id JOIN results r ON r.attempt_id=ea.id WHERE ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?))"
-         ).bind(publishEvaluationMatch[1],user.id,user.id).first();
+           `SELECT ea.id,ea.status,r.published_at FROM exam_attempts ea JOIN exams e ON e.id=ea.exam_id JOIN batches b ON b.id=e.batch_id JOIN results r ON r.attempt_id=ea.id WHERE ea.id=? AND (e.created_by=? OR EXISTS (SELECT 1 FROM batch_teachers bt WHERE bt.batch_id=e.batch_id AND bt.teacher_id=?) OR ${teacherCoveragePredicate("b")})`
+         ).bind(publishEvaluationMatch[1],user.id,user.id,user.id).first();
          if(!attempt) return reply({error:"Result not found or you are not assigned to this exam."},404,request);
          if(attempt.status!=="evaluated") return reply({error:"Complete evaluation before publishing this result."},409,request);
          await env.DB.prepare("UPDATE results SET published_at=datetime('now') WHERE attempt_id=? AND published_at IS NULL").bind(attempt.id).run();
@@ -738,7 +837,7 @@ export default {
 
        const b = await body(request);
 
-       try { const teacher=await inviteRole(b,"teacher",env); return reply({success:true,teacher,message:"Invitation sent. Access is pending Admin approval."},201,request); }
+       try { const teacher=await inviteRole(b,"teacher",env,admin.id); return reply({success:true,teacher,message:teacher.restored?"Teacher restored. A fresh activation email was sent; approval is pending.":"Invitation sent. Access is pending Admin approval."},teacher.restored?200:201,request); }
 
        catch(e){ return reply({error:e.message},400,request); }
 
@@ -802,7 +901,7 @@ export default {
 
        const b=await body(request);
 
-       try { const student=await inviteRole(b,"student",env); return reply({success:true,student,message:"Student invitation sent. Access is pending approval."},201,request); }
+       try { const student=await inviteRole(b,"student",env,admin.id); return reply({success:true,student,message:student.restored?"Student restored. A fresh activation email was sent; approval is pending.":"Student invitation sent. Access is pending approval."},student.restored?200:201,request); }
 
        catch(e){ return reply({error:e.message},400,request); }
 
@@ -966,6 +1065,21 @@ export default {
 
      }
 
+     m=path.match(/^\/api\/classes\/(\d+)$/i);
+     if (m && method === "PATCH") {
+       const b=await body(request), name=text(b.class_name,80), section=text(b.section,30)||null, curriculumId=text(b.curriculum_id,64), yearName=text(b.academic_year,80);
+       if (!name || !curriculumId || !yearName) return reply({error:"Enter a class name, curriculum and academic year"},400,request);
+       const [curriculum,year]=await Promise.all([
+         env.DB.prepare("SELECT id FROM curricula WHERE id=? AND status='active'").bind(curriculumId).first(),
+         env.DB.prepare("SELECT id,name FROM academic_years WHERE name=?").bind(yearName).first()
+       ]);
+       if (!curriculum) return reply({error:"Select an active curriculum"},400,request);
+       if (!year) return reply({error:"Select a valid academic year"},400,request);
+       const r=await env.DB.prepare("UPDATE classes SET class_name=?,section=?,academic_year=?,curriculum_id=? WHERE id=?").bind(name,section,year.name,curriculumId,m[1]).run();
+       if (!r.meta?.changes) return reply({error:"Class not found"},404,request);
+       return reply({success:true},200,request);
+     }
+
      m=path.match(/^\/api\/classes\/(\d+)\/status$/i);
 
      if (m && method === "PATCH") {
@@ -1009,6 +1123,15 @@ export default {
      }
 
 // Subject IDs are INTEGER in the existing D1 schema.*
+
+     m=path.match(/^\/api\/subjects\/(\d+)$/i);
+     if (m && method === "PATCH") {
+       const b=await body(request), name=text(b.subject_name,80);
+       if (!name) return reply({error:"Subject name is required"},400,request);
+       const r=await env.DB.prepare("UPDATE subjects SET subject_name=? WHERE id=?").bind(name,m[1]).run();
+       if (!r.meta?.changes) return reply({error:"Subject not found"},404,request);
+       return reply({success:true},200,request);
+     }
 
      m=path.match(/^\/api\/subjects\/(\d+)\/status$/i);
 
