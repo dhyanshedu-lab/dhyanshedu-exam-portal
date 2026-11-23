@@ -1103,6 +1103,34 @@ function refreshBatchSubjectOptions() {
   fillSelect($("#batch-subject"),items,x=>x.subject_name,"Select subject");
 }
 
+let editingClassId=null, editingSubjectId=null, editingFeePlanId=null;
+function addCancelButton(form,id,label,handler){
+  let btn=document.getElementById(id);if(btn)return btn;
+  btn=document.createElement("button");btn.type="button";btn.id=id;btn.className="btn btn-secondary";btn.textContent=label;btn.hidden=true;
+  form.querySelector('button[type="submit"]').insertAdjacentElement("afterend",btn);btn.addEventListener("click",handler);return btn;
+}
+function startClassEdit(item){
+  editingClassId=item.id;$("#class-curriculum").value=String(item.curriculum_id||"");
+  $("#class-name").value=item.class_name||"";$("#class-section").value=item.section||"";
+  $("#class-year").value=Array.from($("#class-year").options).find(o=>o.textContent===item.academic_year)?.value||"";
+  $("#save-class-button").textContent="Update class";$("#cancel-class-edit").hidden=false;
+  showMessage("class-message","Editing "+item.class_name+".");$("#class-form").scrollIntoView({behavior:"smooth",block:"center"});
+}
+function cancelClassEdit(){editingClassId=null;$("#class-form").reset();$("#save-class-button").textContent="+ Add class";$("#cancel-class-edit").hidden=true;showMessage("class-message","Edit cancelled.");}
+function startSubjectEdit(item){editingSubjectId=item.id;$("#subject-name").value=item.subject_name||"";$("#save-subject-button").textContent="Update subject";$("#cancel-subject-edit").hidden=false;showMessage("subject-message","Editing "+item.subject_name+".");$("#subject-form").scrollIntoView({behavior:"smooth",block:"center"});}
+function cancelSubjectEdit(){editingSubjectId=null;$("#subject-form").reset();$("#save-subject-button").textContent="+ Add subject";$("#cancel-subject-edit").hidden=true;showMessage("subject-message","Edit cancelled.");}
+function startFeePlanEdit(p){
+  editingFeePlanId=p.id;$("#fee-plan-name").value=p.name||"";$("#fee-plan-amount").value=(Number(p.amount_paise||0)/100).toFixed(2);
+  $("#fee-plan-frequency").value=p.billing_frequency||"one_time";$("#fee-plan-scope").value=p.pricing_scope||"general";
+  $("#fee-plan-batch-type").value=p.batch_type||"";$("#fee-plan-curriculum").value=p.curriculum_id||"";
+  $("#fee-plan-class").value=p.class_id||"";$("#fee-plan-subject").value=p.subject_id||"";$("#fee-plan-batch").value=p.batch_id||"";
+  $("#fee-plan-effective-from").value=p.effective_from||"";$("#fee-plan-effective-to").value=p.effective_to||"";
+  $("#fee-plan-description").value=p.description||"";$("#fee-plan-inclusions").value=p.inclusions||"";$("#fee-plan-terms").value=p.terms||"";
+  $("#fee-plan-submit").textContent="Update fee plan";$("#cancel-fee-plan-edit").hidden=false;
+  $("#fee-plan-message").textContent=p.public_status==="draft"?"Editing draft plan.":"Saving this published/archived plan creates a new draft revision. The original remains unchanged.";
+  $("#fee-plan-form").scrollIntoView({behavior:"smooth",block:"center"});
+}
+function cancelFeePlanEdit(){editingFeePlanId=null;$("#fee-plan-form").reset();$("#fee-plan-submit").textContent="Save draft plan";$("#cancel-fee-plan-edit").hidden=true;$("#fee-plan-message").textContent="Edit cancelled.";}
 async function loadClasses() {
   const body = $("#class-list"); body.replaceChildren();
   await loadMasterData();
@@ -1112,9 +1140,12 @@ async function loadClasses() {
     const row = body.insertRow();
     addCell(row, item.class_name); addCell(row, item.section || "—"); addCell(row, item.academic_year || "—");
     const status = row.insertCell(); status.append(statusTag(item.status));
-    addStatusSelect(row.insertCell(), item.status, ["active", "inactive"], value =>
+    const action=row.insertCell();
+    addStatusSelect(action, item.status, ["active", "inactive"], value =>
       api(`/api/classes/${item.id}/status`, { method: "PATCH", body: JSON.stringify({ status: value }) })
     );
+    const edit=document.createElement("button"); edit.className="btn btn-secondary btn-small"; edit.textContent="Edit"; edit.style.marginLeft="8px";
+    edit.addEventListener("click",()=>startClassEdit(item)); action.append(edit);
   });
   if (!classes.length) { const row=body.insertRow(); const td=addCell(row,"No classes created yet."); td.colSpan=5; }
 }
@@ -1125,9 +1156,12 @@ async function loadSubjects() {
   subjects.forEach(item => {
     const row=body.insertRow(); addCell(row,item.subject_name);
     const status=row.insertCell(); status.append(statusTag(item.status));
-    addStatusSelect(row.insertCell(),item.status,["active","inactive"],value =>
+    const action=row.insertCell();
+    addStatusSelect(action,item.status,["active","inactive"],value =>
       api(`/api/subjects/${item.id}/status`,{method:"PATCH",body:JSON.stringify({status:value})})
     );
+    const edit=document.createElement("button"); edit.className="btn btn-secondary btn-small"; edit.textContent="Edit"; edit.style.marginLeft="8px";
+    edit.addEventListener("click",()=>startSubjectEdit(item)); action.append(edit);
   });
   if (!subjects.length) { const row=body.insertRow(); const td=addCell(row,"No subjects created yet."); td.colSpan=3; }
 }
@@ -1346,7 +1380,9 @@ async function loadAdminFees(){
     (plans.fee_plans||[]).forEach(p=>{
       const frequencyLabel = p.billing_frequency === "one_time" && p.batch_type ? "Per 60-min session" : p.billing_frequency;
       const tr=plansBody.insertRow();[p.name,p.pricing_scope,frequencyLabel,rupees(p.amount_paise),[p.effective_from,p.effective_to].filter(Boolean).join(" – ")||"—",p.public_status].forEach(v=>addCell(tr,v));
-      const action=tr.insertCell(),sel=document.createElement("select");sel.className="status-select";
+      const action=tr.insertCell();
+      const edit=document.createElement("button");edit.className="btn btn-secondary btn-small";edit.textContent="Edit";edit.addEventListener("click",()=>startFeePlanEdit(p));action.append(edit);
+      const sel=document.createElement("select");sel.className="status-select";
       ["draft","published","archived"].forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;sel.append(o);});sel.value=p.public_status;
       const btn=document.createElement("button");btn.className="btn btn-secondary btn-small";btn.textContent="Save status";
       btn.addEventListener("click",async()=>{btn.disabled=true;try{await api("/api/admin/fee-plans/"+encodeURIComponent(p.id)+"/status",{method:"PATCH",body:JSON.stringify({status:sel.value})});await loadAdminFees();}catch(e){alert(e.message);btn.disabled=false;}});
@@ -1475,6 +1511,8 @@ async function loadAdminPage(name) {
   } catch(error) { $("#dashboard-message").textContent=error.message; }
 }
 
+addCancelButton($("#fee-plan-form"),"cancel-fee-plan-edit","Cancel",cancelFeePlanEdit);
+$("#fee-plan-submit").id="fee-plan-submit";
 document.addEventListener("submit",async e=>{
   if(e.target.id!=="teacher-grade-form") return;
   e.preventDefault();
@@ -1585,20 +1623,27 @@ $("#academic-year-form").addEventListener("submit",async e=>{
   }catch(error){showMessage("academic-year-message",error.message);}
 });
 
+addCancelButton($("#class-form"),"cancel-class-edit","Cancel",cancelClassEdit);
+addCancelButton($("#subject-form"),"cancel-subject-edit","Cancel",cancelSubjectEdit);
 $("#class-form").addEventListener("submit",async e=>{
   e.preventDefault(); const b=$("#save-class-button"); b.disabled=true;
   try {
-    await api("/api/classes",{method:"POST",body:JSON.stringify({
-      class_name:$("#class-name").value.trim(),section:$("#class-section").value.trim(),curriculum_id:$("#class-curriculum").value,academic_year_id:$("#class-year").value
-    })});
-    $("#class-form").reset(); showMessage("class-message","Class created successfully."); await loadClasses();
+    const wasEditing=Boolean(editingClassId);
+    const payload={class_name:$("#class-name").value.trim(),section:$("#class-section").value.trim(),curriculum_id:$("#class-curriculum").value,academic_year:$("#class-year").selectedOptions[0]?.textContent||""};
+    if(wasEditing) await api("/api/classes/"+editingClassId,{method:"PATCH",body:JSON.stringify(payload)});
+    else await api("/api/classes",{method:"POST",body:JSON.stringify({...payload,academic_year_id:$("#class-year").value})});
+    editingClassId=null;$("#class-form").reset();$("#save-class-button").textContent="+ Add class";$("#cancel-class-edit").hidden=true;
+    showMessage("class-message",wasEditing?"Class updated successfully.":"Class created successfully."); await loadClasses();
   } catch(error){showMessage("class-message",error.message);} finally{b.disabled=false;}
 });
 $("#subject-form").addEventListener("submit",async e=>{
   e.preventDefault(); const b=$("#save-subject-button"); b.disabled=true;
   try {
-    await api("/api/subjects",{method:"POST",body:JSON.stringify({subject_name:$("#subject-name").value.trim()})});
-    $("#subject-form").reset(); showMessage("subject-message","Subject created successfully."); await loadSubjects();
+    const wasEditing=Boolean(editingSubjectId),payload={subject_name:$("#subject-name").value.trim()};
+    if(wasEditing) await api("/api/subjects/"+editingSubjectId,{method:"PATCH",body:JSON.stringify(payload)});
+    else await api("/api/subjects",{method:"POST",body:JSON.stringify(payload)});
+    editingSubjectId=null;$("#subject-form").reset();$("#save-subject-button").textContent="+ Add subject";$("#cancel-subject-edit").hidden=true;
+    showMessage("subject-message",wasEditing?"Subject updated successfully.":"Subject created successfully."); await loadSubjects();
   } catch(error){showMessage("subject-message",error.message);} finally{b.disabled=false;}
 });
 $("#batch-form").addEventListener("submit",async e=>{
@@ -1897,8 +1942,14 @@ document.addEventListener("submit",async e=>{
     catch(err){msg.textContent=err.message;}finally{btn.disabled=false;}
   }
   if(e.target.id==="fee-plan-form"){
-    e.preventDefault();const f=e.target,msg=$("#fee-plan-message");msg.textContent="Saving draft…";
-    try{await api("/api/admin/fee-plans",{method:"POST",body:JSON.stringify({name:$("#fee-plan-name").value.trim(),amount_paise:Math.round(Number($("#fee-plan-amount").value)*100),billing_frequency:$("#fee-plan-frequency").value,pricing_scope:$("#fee-plan-scope").value,batch_type:$("#fee-plan-batch-type").value||null,curriculum_id:$("#fee-plan-curriculum").value||null,class_id:$("#fee-plan-class").value||null,subject_id:$("#fee-plan-subject").value||null,batch_id:$("#fee-plan-batch").value||null,effective_from:$("#fee-plan-effective-from").value||null,effective_to:$("#fee-plan-effective-to").value||null,description:$("#fee-plan-description").value,inclusions:$("#fee-plan-inclusions").value,terms:$("#fee-plan-terms").value})});f.reset();msg.textContent="Fee plan saved as draft. Publish it when ready.";await loadAdminFees();}catch(err){msg.textContent=err.message;}
+    e.preventDefault();const f=e.target,msg=$("#fee-plan-message"),wasEditing=Boolean(editingFeePlanId);msg.textContent=wasEditing?"Updating fee plan…":"Saving draft…";
+    const payload={name:$("#fee-plan-name").value.trim(),amount_paise:Math.round(Number($("#fee-plan-amount").value)*100),billing_frequency:$("#fee-plan-frequency").value,pricing_scope:$("#fee-plan-scope").value,batch_type:$("#fee-plan-batch-type").value||null,curriculum_id:$("#fee-plan-curriculum").value||null,class_id:$("#fee-plan-class").value||null,subject_id:$("#fee-plan-subject").value||null,batch_id:$("#fee-plan-batch").value||null,effective_from:$("#fee-plan-effective-from").value||null,effective_to:$("#fee-plan-effective-to").value||null,description:$("#fee-plan-description").value,inclusions:$("#fee-plan-inclusions").value,terms:$("#fee-plan-terms").value};
+    try{
+      const result=wasEditing?await api("/api/admin/fee-plans/"+encodeURIComponent(editingFeePlanId),{method:"PATCH",body:JSON.stringify(payload)}):await api("/api/admin/fee-plans",{method:"POST",body:JSON.stringify(payload)});
+      editingFeePlanId=null;f.reset();$("#fee-plan-submit").textContent="Save draft plan";$("#cancel-fee-plan-edit").hidden=true;
+      msg.textContent=wasEditing?(result.revision?"A new draft revision was created. The published plan and existing student agreements remain unchanged.":"Draft fee plan updated. Existing student agreements and payments remain unchanged."):"Fee plan saved as draft. Publish it when ready.";
+      await loadAdminFees();
+    }catch(err){msg.textContent=err.message;}
   }
   if(e.target.id==="fee-account-form"){
     e.preventDefault();const f=e.target,msg=$("#fee-account-message");msg.textContent="Creating student fee account…";
