@@ -136,3 +136,28 @@ textarea{resize:vertical;min-height:76px;line-height:1.5}
 /* Shared account controls for Admin, Teacher and Student workspaces */
 .topbar-actions{display:flex;align-items:center;gap:18px}.topbar-signout{margin:0;padding:10px 14px;border:1px solid var(--line);border-radius:9px;color:var(--navy);font-weight:700;white-space:nowrap}.topbar-signout:hover{background:#f4f6fa}.topbar-signout:disabled{opacity:.6;cursor:wait}
 @media(max-width:640px){.topbar{padding:0 16px}.topbar-actions{gap:8px}.topbar-signout{padding:8px 10px;font-size:12px}.user-chip{gap:7px}.user-chip>span:last-child{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+
+/* Role dashboards: Admin-style sidebar navigation and student progress overview */
+#role-workspace-page [id]{scroll-margin-top:110px}
+.student-progress-panel{margin:0 0 22px;padding:22px}
+.student-progress-summary{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:20px 22px;margin:4px 0 18px;border-radius:12px;background:linear-gradient(115deg,#172b49,#2d4d75);color:#fff}
+.student-progress-summary strong{display:block;font-size:34px;line-height:1.2;margin:5px 0}
+.student-progress-summary p{margin:0;color:#d2dceb;font-size:13px}
+.student-progress-kicker{font-size:10px;letter-spacing:1.5px;font-weight:800;color:#d9bd76}
+.student-progress-ring{width:82px;height:82px;flex:0 0 82px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(#d6ad53 var(--progress),rgba(255,255,255,.2) 0);position:relative}
+.student-progress-ring:before{content:"";position:absolute;inset:7px;border-radius:50%;background:#233f64}
+.student-progress-ring span{position:relative;font-size:15px;font-weight:800;color:#fff}
+.student-progress-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.student-progress-card{padding:17px;border:1px solid var(--line);border-radius:11px;background:#fff;min-width:0}
+.student-progress-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.student-progress-card h4{font-size:14px;margin:0;line-height:1.4}
+.student-progress-card-head strong{color:#98721a;font-size:15px}
+.student-progress-card p{font-size:12px;color:var(--muted);margin:10px 0}
+.student-progress-track{height:9px;background:#edf0f5;border-radius:99px;overflow:hidden}
+.student-progress-track span{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#9b7a39,#e2c477);transition:width .35s ease}
+.student-achievement-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.student-achievement-card{display:grid;gap:6px;align-content:start;padding:15px;border:1px solid var(--line);border-radius:11px;background:#fbfcfe}
+.student-achievement-icon{font-size:24px}
+.student-achievement-card strong{font-size:13px}
+.student-achievement-card small{font-size:11px;color:var(--muted);line-height:1.45}
+@media(max-width:680px){.student-progress-grid{grid-template-columns:1fr}.student-achievement-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.student-progress-summary{padding:16px}.student-progress-ring{width:68px;height:68px;flex-basis:68px}}
