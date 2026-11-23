@@ -236,7 +236,7 @@
       </section>
       <section id="fees-page" class="hidden">
         <div class="section-heading page-title"><div><h2>Fee management</h2><p class="muted">Create fee plans, preserve each student's agreed fee and record manual payments.</p></div><button id="refresh-fees" class="btn btn-primary" type="button">Refresh</button></div>
-        <div class="form-card"><h3>Create fee plan</h3><form id="fee-plan-form" class="form-grid">
+        <div class="form-card"><h3>Create / edit fee plan</h3><p class="muted">Editing a published or archived plan creates a new draft revision. Existing student fee agreements and payment records are never changed.</p><form id="fee-plan-form" class="form-grid">
           <div><label for="fee-plan-name">Plan name</label><input id="fee-plan-name" required maxlength="160" placeholder="e.g. Class 10 Maths – Group"></div>
           <div><label for="fee-plan-amount">Fee amount (₹)</label><input id="fee-plan-amount" type="number" min="0.01" step="0.01" required></div>
           <div><label for="fee-plan-frequency">Billing / session basis</label><select id="fee-plan-frequency"><option value="one_time">Per session / one time</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="term">Term</option><option value="annual">Annual</option></select></div>
