@@ -1110,7 +1110,10 @@ function addCancelButton(form,id,label,handler){
   form.querySelector('button[type="submit"]').insertAdjacentElement("afterend",btn);btn.addEventListener("click",handler);return btn;
 }
 function startClassEdit(item){
-  editingClassId=item.id;$("#class-curriculum").value=String(item.curriculum_id||"");
+  editingClassId=item.id;
+  let curriculumOption=Array.from($("#class-curriculum").options).find(o=>o.value===String(item.curriculum_id||""));
+  if(!curriculumOption&&item.curriculum_id){curriculumOption=document.createElement("option");curriculumOption.value=String(item.curriculum_id);curriculumOption.textContent=item.curriculum_name||"Current curriculum";$("#class-curriculum").append(curriculumOption);}
+  $("#class-curriculum").value=String(item.curriculum_id||"");
   $("#class-name").value=item.class_name||"";$("#class-section").value=item.section||"";
   let yearOption=Array.from($("#class-year").options).find(o=>o.textContent===item.academic_year);
   if(!yearOption&&item.academic_year){yearOption=document.createElement("option");yearOption.value=item.academic_year;yearOption.textContent=item.academic_year;$("#class-year").append(yearOption);}
