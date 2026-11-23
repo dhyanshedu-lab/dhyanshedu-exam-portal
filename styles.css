@@ -136,3 +136,51 @@ textarea{resize:vertical;min-height:76px;line-height:1.5}
 /* Shared account controls for Admin, Teacher and Student workspaces */
 .topbar-actions{display:flex;align-items:center;gap:18px}.topbar-signout{margin:0;padding:10px 14px;border:1px solid var(--line);border-radius:9px;color:var(--navy);font-weight:700;white-space:nowrap}.topbar-signout:hover{background:#f4f6fa}.topbar-signout:disabled{opacity:.6;cursor:wait}
 @media(max-width:640px){.topbar{padding:0 16px}.topbar-actions{gap:8px}.topbar-signout{padding:8px 10px;font-size:12px}.user-chip{gap:7px}.user-chip>span:last-child{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+
+
+/* Teacher and student dashboard section shortcuts */
+.role-quick-nav{
+  position:sticky;
+  top:12px;
+  z-index:4;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  overflow-x:auto;
+  padding:10px;
+  margin:0 0 20px;
+  background:rgba(255,255,255,.96);
+  border:1px solid var(--line);
+  border-radius:12px;
+  box-shadow:0 6px 20px rgba(16,31,54,.07);
+  scrollbar-width:thin;
+}
+.role-quick-link{
+  flex:0 0 auto;
+  border:1px solid #dfe5ee;
+  border-radius:8px;
+  padding:9px 13px;
+  background:#f7f9fc;
+  color:#42536d;
+  font-size:12px;
+  font-weight:700;
+  white-space:nowrap;
+}
+.role-quick-link:hover,.role-quick-link.active{
+  background:#263d5d;
+  border-color:#263d5d;
+  color:#fff;
+}
+#role-workspace-page .stats-grid,
+#role-workspace-page .table-card,
+#role-workspace-page .form-card,
+#role-workspace-page .section-heading{
+  scroll-margin-top:100px;
+}
+@media(max-width:680px){
+  .role-quick-nav{top:118px;margin:0 -2px 16px;padding:8px}
+  .role-quick-link{padding:8px 11px;font-size:11px}
+  #role-workspace-page .stats-grid,
+  #role-workspace-page .table-card,
+  #role-workspace-page .form-card{scroll-margin-top:180px}
+}
