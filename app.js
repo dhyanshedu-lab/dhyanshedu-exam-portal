@@ -1397,7 +1397,7 @@ async function loadAdminFees(){
     if(!plansBody.children.length){const tr=plansBody.insertRow(),td=tr.insertCell();td.colSpan=7;td.textContent="No fee plans created yet.";}
     accountsBody.replaceChildren();
     (accounts.accounts||[]).forEach(a=>{
-      const paid=Number(a.paid_paise||0),credit=Number(a.adjustment_credit_paise||0),balance=Math.max(0,Number(a.amount_due_paise)-paid-credit),status=balance===0?"paid":a.due_date&&a.due_date<new Date().toISOString().slice(0,10)?"overdue":paid>0||credit>0?"partial":"pending";
+      const paid=Number(a.paid_paise||0),credit=Number(a.adjustment_credit_paise||0),balance=Math.max(0,Number(a.amount_due_paise)-paid-credit),status=a.status==="refunded"?"refunded":balance===0?"paid":a.due_date&&a.due_date<new Date().toISOString().slice(0,10)?"overdue":paid>0||credit>0?"partial":"pending";
       const tr=accountsBody.insertRow();[a.student_name,a.description,rupees(a.amount_due_paise),rupees(paid),rupees(balance),a.due_date||"—",status].forEach(v=>addCell(tr,v));
       const action=tr.insertCell();
       const pay=document.createElement("button");pay.className="btn btn-primary btn-small";pay.textContent="Record payment";pay.disabled=balance<=0;
@@ -1460,7 +1460,7 @@ async function loadStudentFees(){
       const card=document.createElement("div");card.className="table-card";
       const heading=document.createElement("div");heading.className="table-heading";
       const h=document.createElement("h3");h.textContent=a.description;const sub=document.createElement("p");sub.className="muted";sub.textContent=(a.plan_name||"Custom fee")+" · Agreed "+rupees(a.amount_due_paise)+" · Paid "+rupees(a.paid_paise)+" · Outstanding "+rupees(Math.max(0,Number(a.amount_due_paise)-Number(a.paid_paise||0)-Number(a.adjustment_credit_paise||0)));
-      heading.append(h,sub);card.append(heading);
+      if(a.status==="refunded")sub.textContent+=" · Refunded in full";heading.append(h,sub);card.append(heading);
       const wrap=document.createElement("div");wrap.className="table-scroll";const table=document.createElement("table");table.innerHTML="<thead><tr><th>Payment date</th><th>Method</th><th>Amount</th><th>Receipt</th><th>Reference</th></tr></thead>";
       const tbody=document.createElement("tbody");
       (a.transactions||[]).forEach(t=>{const tr=tbody.insertRow();[t.received_at?new Date(t.received_at).toLocaleDateString():"—",t.payment_method,rupees(t.amount_paise)].forEach(v=>addCell(tr,v));const receiptCell=tr.insertCell();if(t.receipt_id){const btn=document.createElement("button");btn.className="btn btn-secondary btn-small";btn.textContent="Print "+(t.receipt_number||"receipt");btn.addEventListener("click",()=>printPortalReceipt(t.receipt_id));receiptCell.append(btn);}else receiptCell.textContent=t.receipt_number||"—";addCell(tr,t.transaction_reference||"—");});
