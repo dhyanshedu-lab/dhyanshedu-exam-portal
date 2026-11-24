@@ -1472,7 +1472,8 @@ async function loadStudentFees(){
       const policy=document.createElement("p");policy.className="hint";policy.textContent="Money-back guarantee: request a 100% refund of payments recorded for this account, with no deduction. You may request it even after completing your first five classes.";refundArea.append(policy);
       if(prior){
         const status=document.createElement("p");status.className="hint";status.textContent="Refund request: "+prior.status.toUpperCase()+(prior.status==="refunded"?" · "+rupees(prior.requested_amount_paise)+" refunded":" · "+rupees(prior.requested_amount_paise)+" requested")+(prior.refund_reference?" · Reference: "+prior.refund_reference:"");refundArea.append(status);
-      }else if(Number(a.paid_paise||0)>0){
+      }
+      if((!prior||prior.status==="rejected")&&Number(a.paid_paise||0)>0){
         const button=document.createElement("button");button.type="button";button.className="btn btn-secondary btn-small";button.textContent="Request full refund";
         button.addEventListener("click",async()=>{const reason=prompt("Please tell us why you are requesting a refund.");if(reason===null)return;if(!reason.trim()){alert("Please enter a reason.");return;}button.disabled=true;try{await api("/api/student/refund-requests",{method:"POST",body:JSON.stringify({fee_account_id:a.id,reason:reason.trim()})});await loadStudentFees();}catch(e){alert(e.message);button.disabled=false;}});
         refundArea.append(button);
