@@ -1408,8 +1408,43 @@ async function loadAdminFees(){
     });
     if(!accountsBody.children.length){const tr=accountsBody.insertRow(),td=tr.insertCell();td.colSpan=8;td.textContent="No student fee accounts created yet.";}
     showMessage("fee-management-message","");
+    await loadAdminRefundRequests();
   }catch(e){showMessage("fee-management-message",e.message);plansBody.innerHTML='<tr><td colspan="7">Could not load fee plans.</td></tr>';accountsBody.innerHTML='<tr><td colspan="8">Could not load fee accounts.</td></tr>';}
 }
+
+async function loadAdminRefundRequests(){
+  const body=$("#refund-request-list"),message=$("#refund-request-message");if(!body)return;
+  body.innerHTML='<tr><td colspan="7">Loading refund requests…</td></tr>';message.textContent="";
+  try{
+    const d=await api("/api/admin/refund-requests");body.replaceChildren();
+    (d.refund_requests||[]).forEach(r=>{
+      const tr=body.insertRow();
+      const cell=v=>{const td=tr.insertCell();td.textContent=v??"—";return td;};
+      cell(r.requested_at?new Date(r.requested_at+"Z").toLocaleString():"—");
+      cell(r.student_name+" · "+r.email);cell(r.description);
+      cell(rupees(r.requested_amount_paise));cell(r.reason);cell(r.status.toUpperCase());
+      const action=cell("");
+      const run=async(status)=>{let payload={status,admin_notes:""};
+        if(status==="refunded"){payload.refund_method=prompt("Refund method: bank_transfer, upi, cash or other","upi");if(!payload.refund_method)return;payload.refund_reference=prompt("Refund transaction / reference number (required)","");if(!payload.refund_reference?.trim()){alert("A refund reference is required.");return;}}
+        if(status==="rejected"){payload.admin_notes=prompt("Reason for rejection (required)","")||"";if(!payload.admin_notes.trim()){alert("Please enter a reason for rejection.");return;}}
+        const button=action.querySelector("button");if(button)button.disabled=true;
+        try{await api("/api/admin/refund-requests/"+encodeURIComponent(r.id),{method:"PATCH",body:JSON.stringify(payload)});await loadAdminRefundRequests();}
+        catch(e){message.textContent=e.message;if(button)button.disabled=false;}
+      };
+      if(r.status==="pending"){
+        const approve=document.createElement("button");approve.className="btn btn-primary btn-small";approve.textContent="Approve";approve.addEventListener("click",()=>run("approved"));
+        const reject=document.createElement("button");reject.className="btn btn-secondary btn-small";reject.textContent="Reject";reject.addEventListener("click",()=>run("rejected"));action.append(approve,reject);
+      }else if(r.status==="approved"){
+        const paid=document.createElement("button");paid.className="btn btn-primary btn-small";paid.textContent="Record refund paid";paid.addEventListener("click",()=>run("refunded"));action.append(paid);
+      }else{
+        action.textContent=r.status==="refunded"?"Paid · "+(r.refund_method||"")+" · "+(r.refund_reference||""):"No action";
+      }
+      if(r.admin_notes){const note=document.createElement("p");note.className="hint";note.textContent="Admin note: "+r.admin_notes;action.append(note);}
+    });
+    if(!body.children.length){const tr=body.insertRow(),td=tr.insertCell();td.colSpan=7;td.textContent="No refund requests yet.";}
+  }catch(e){body.innerHTML='<tr><td colspan="7"></td></tr>';body.querySelector("td").textContent=e.message;}
+}
+
 async function printPortalReceipt(receiptId){
   const win=window.open("about:blank","_blank");
   if(!win){alert("Allow pop-ups to print the receipt.");return;}
@@ -1419,7 +1454,8 @@ async function loadStudentFees(){
   await refreshInrUsdRate();
   const root=$("#student-fee-accounts");if(!root)return;root.textContent="Loading fee information…";
   try{
-    const d=await api("/api/student/fees");root.replaceChildren();
+    const [d,r]=await Promise.all([api("/api/student/fees"),api("/api/student/refund-requests")]);
+    const requests=r.refund_requests||[];root.replaceChildren();
     (d.accounts||[]).forEach(a=>{
       const card=document.createElement("div");card.className="table-card";
       const heading=document.createElement("div");heading.className="table-heading";
@@ -1431,7 +1467,17 @@ async function loadStudentFees(){
       if(!tbody.children.length){const tr=tbody.insertRow(),td=tr.insertCell();td.colSpan=5;td.textContent="No payments recorded yet.";}
       table.append(tbody);wrap.append(table);card.append(wrap);
       if((a.installments||[]).length){const list=document.createElement("p");list.className="hint";list.textContent="Instalments: "+a.installments.map(x=>x.description+" · "+rupees(x.amount_paise)+" · due "+x.due_date).join(" | ");card.append(list);}
-      root.append(card);
+      const prior=requests.find(x=>x.fee_account_id===a.id);
+      const refundArea=document.createElement("div");refundArea.className="refund-request-area";
+      const policy=document.createElement("p");policy.className="hint";policy.textContent="Money-back guarantee: request a 100% refund of payments recorded for this account, with no deduction. You may request it even after completing your first five classes.";refundArea.append(policy);
+      if(prior){
+        const status=document.createElement("p");status.className="hint";status.textContent="Refund request: "+prior.status.toUpperCase()+(prior.status==="refunded"?" · "+rupees(prior.requested_amount_paise)+" refunded":" · "+rupees(prior.requested_amount_paise)+" requested")+(prior.refund_reference?" · Reference: "+prior.refund_reference:"");refundArea.append(status);
+      }else if(Number(a.paid_paise||0)>0){
+        const button=document.createElement("button");button.type="button";button.className="btn btn-secondary btn-small";button.textContent="Request full refund";
+        button.addEventListener("click",async()=>{const reason=prompt("Please tell us why you are requesting a refund.");if(reason===null)return;if(!reason.trim()){alert("Please enter a reason.");return;}button.disabled=true;try{await api("/api/student/refund-requests",{method:"POST",body:JSON.stringify({fee_account_id:a.id,reason:reason.trim()})});await loadStudentFees();}catch(e){alert(e.message);button.disabled=false;}});
+        refundArea.append(button);
+      }
+      card.append(refundArea);root.append(card);
     });
     if(!(d.accounts||[]).length)root.textContent="No fee account has been assigned to you yet.";
   }catch(e){root.textContent=e.message;}
